@@ -20,6 +20,11 @@ const standards=Array.from({length:18},(_,index)=>{
    lookup[pid].items.push({id,text:m?ml.slice(m[0].length):ml,type:trim(row[3]),scope:trim(row[4]),matrix:trim(row[5]),responsible:trim(row[6]),manager:trim(row[7]),gap:trim(row[9])||trim(row[10]),action:trim(row[8])});
   }
  }
+// Preserve empty requirements and normalize duplicate point headings from the source.
+ const seen=new Map();
+ for(const p of points){const prior=seen.get(p.id);if(prior){prior.criterion ||= p.criterion;prior.items.push(...p.items)}else seen.set(p.id,p)}
+ points.splice(0,points.length,...seen.values());
+ for(const p of points){if(!p.items.length)p.items.push({id:p.id,text:'Punto sin subpunto numerado en la matriz',type:'',scope:'',matrix:'',responsible:'',manager:'',gap:'',action:''})}
  return{id:n,title,points};
 });
 const points=standards.reduce((n,s)=>n+s.points.length,0);
