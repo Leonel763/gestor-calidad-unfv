@@ -16,6 +16,8 @@ import {
   Layers3,
   LayoutDashboard,
   Library,
+  Landmark,
+  BarChart3,
   Menu,
   Paperclip,
   Search,
@@ -111,7 +113,7 @@ const TYPE_OPTIONS = ['Todos', 'Documento / Informe', 'Matriz', 'Reglamento', 'A
 function StatCard({ number, label, sub, kind }: { number: number; label: string; sub: string; kind: string }) {
   return (
     <div className={`metric ${kind}`}>
-      <div className="metric-icon" />
+      <div className="metric-icon" aria-hidden="true">{kind === "m-one" ? <Layers3 size={26} /> : kind === "m-two" ? <ClipboardList size={26} /> : kind === "m-three" ? <BarChart3 size={26} /> : <Folder size={26} />}</div>
       <div className="metric-copy">
         <div className="metric-kicker">{label}</div>
         <div className="metric-number">{number}</div>
@@ -425,7 +427,7 @@ export default function Home() {
           ))}
         </nav>
         <div className="unfv-mini-panel">
-          <div className="unfv-mini-mark" />
+          <div className="unfv-mini-mark" aria-hidden="true"><Landmark size={26} /></div>
           <div>
             <strong>Universidad Nacional</strong>
             <span>Federico Villarreal</span>
