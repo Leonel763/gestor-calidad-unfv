@@ -107,3 +107,41 @@
 .modal-actions .confirm-delete{background:#c6483e}
 @media(max-width:1200px){.home-layout{grid-template-columns:1fr}.home-side{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.progress-overview-body{grid-template-columns:1fr}.toolbar-extended{grid-template-columns:1fr 1fr}}
 @media(max-width:740px){.top-right{display:none}.page-hero.with-photo{background:linear-gradient(180deg,#f7fafe,#f7fafe)}.metrics-modern .metric{min-height:unset}.progress-hero{flex-direction:column;align-items:flex-start}.progress-counters{grid-template-columns:1fr 1fr}.home-side{grid-template-columns:1fr}.upload-grid-fields{grid-template-columns:1fr}.toolbar-extended{grid-template-columns:1fr}.library-record-head{flex-direction:column}.library-badges{justify-content:flex-start}}
+
+/* Ajuste visual refinado del panel UNFV */
+.page-modern{max-width:1700px;padding:24px 28px 70px}
+.page-hero.with-photo{min-height:172px;padding:26px 30px;border-radius:17px;position:relative;isolation:isolate;overflow:hidden;background:#f3f8fc;border:1px solid #d9e6f0}
+.page-hero.with-photo:before{content:"";position:absolute;z-index:-2;inset:0 0 0 43%;background:url('/unfv-campus.png') center 48%/cover no-repeat}
+.page-hero.with-photo:after{content:"";position:absolute;z-index:-1;inset:0;background:linear-gradient(90deg,#f8fbfe 0%,rgba(248,251,254,.98) 31%,rgba(248,251,254,.67) 53%,rgba(248,251,254,.08) 100%)}
+.page-hero.with-photo h1{font-size:32px;margin:8px 0;color:#143657}
+.page-hero.with-photo p{font-size:13px;font-weight:500;color:#57738d}
+.home-layout{grid-template-columns:minmax(0,1fr) 288px;gap:15px}
+.home-main,.home-side{gap:16px;min-width:0}
+.home-main .metrics{margin-bottom:0;gap:11px}
+.metrics-modern .metric{height:115px;min-height:115px;padding:14px;gap:12px;border-radius:13px}
+.metric-icon{display:grid;place-items:center;flex:0 0 45px;width:45px;height:45px}
+.m-one .metric-icon{background:#dff5ec;color:#07936b}
+.m-two .metric-icon{background:#e4efff;color:#1875d1}
+.m-three .metric-icon{background:#efe6ff;color:#7750dc}
+.m-four .metric-icon{background:#fff0e6;color:#da702d}
+.metric:before{display:none}.metric-copy{min-width:0}.metric-kicker{font-size:12px;color:#31546e;line-height:1.2}.metric-number{font-size:30px;line-height:1.1;margin:6px 0}.metric-sub{font-size:10px;line-height:1.4}.metric-arrow{flex:0 0 13px;width:13px}
+.progress-overview-card{min-height:0;padding:17px 19px 18px;border-radius:14px}
+.progress-overview-head h2{font-size:19px;margin:0 0 13px}
+.progress-overview-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:14px}
+.progress-hero{gap:13px;align-items:center;min-width:0}
+.progress-donut{width:90px;height:90px;flex-basis:90px}
+.progress-donut span{width:68px;height:68px;font-size:23px}
+.progress-copy{flex:1;min-width:0}.progress-copy strong{font-size:17px;line-height:1.3}.progress-copy p{font-size:11px;line-height:1.45;margin:6px 0 9px}.progress-line{height:6px}
+.progress-counters{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.overview-mini{min-height:86px;padding:12px 8px;border-radius:10px;min-width:0}
+.overview-mini span{font-size:10px;line-height:1.25;min-height:25px;margin-bottom:5px}
+.overview-mini b{font-size:23px}
+.side-widget{padding:16px;border-radius:14px;min-width:0}.side-widget h3{font-size:15px}
+.activity-row{grid-template-columns:12px minmax(0,1fr);gap:7px 9px;min-width:0}
+.activity-row>div:nth-child(2){min-width:0}
+.activity-row strong,.activity-row small{max-width:100%;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.activity-row>span{grid-column:2;font-size:10px;white-space:normal}
+.unfv-mini-mark{display:grid;place-items:center;width:40px;height:70px;flex:0 0 40px;color:#bee5ff}
+@media(max-width:1380px){.home-main .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.progress-overview-body{grid-template-columns:1fr}}
+@media(max-width:1120px){.home-layout{grid-template-columns:1fr}.home-side{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:740px){.page-modern{padding:18px 14px 60px}.page-hero.with-photo{padding:19px 16px;min-height:150px}.page-hero.with-photo:before{inset:0 0 0 15%}.page-hero.with-photo:after{background:linear-gradient(90deg,rgba(248,251,254,.98),rgba(248,251,254,.78))}.page-hero.with-photo h1{font-size:25px}.home-main .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metrics-modern .metric{height:auto;min-height:103px;padding:10px;gap:8px}.metric-icon{width:33px;height:33px;flex-basis:33px}.metric-icon svg{width:19px}.metric-number{font-size:25px}.metric-arrow{display:none}.progress-overview-body{grid-template-columns:1fr}.progress-counters{grid-template-columns:repeat(2,1fr)}.home-side{grid-template-columns:1fr}}
