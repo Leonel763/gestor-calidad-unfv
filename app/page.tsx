@@ -1,81 +1,859 @@
 'use client';
-import {useEffect,useMemo,useState} from 'react';
-import {LayoutDashboard,Layers3,Library,ClipboardList,Search,ChevronRight,ArrowLeft,Upload,FileText,Folder,CheckCircle2,Clock3,AlertCircle,Menu,X,ExternalLink,BookOpen,Cloud,ShieldCheck,Filter,Info,Paperclip, Trash2, LockKeyhole} from 'lucide-react';
-import matrix from '../lib/matriz.json';
-import {client, type Evidence, type Tracking} from '../lib/supabase';
 
-type Item={id:string;text:string;type:string;scope:string;matrix:string;responsible:string;manager:string;gap:string;action:string};
-type Point={id:string;criterion:string;items:Item[]};
-type Standard={id:number;title:string;points:Point[]};
-type RecordItem=Item&{standard:number;standardTitle:string;point:string;criterion:string};
-const standards=matrix as Standard[];
-const all:RecordItem[]=standards.flatMap(st=>st.points.flatMap(pt=>pt.items.map(it=>({...it,standard:st.id,standardTitle:st.title,point:pt.id,criterion:pt.criterion}))));
-const ST={pendiente:{name:'Pendiente',color:'neutral'},en_proceso:{name:'En elaboración',color:'blue'},complementar:{name:'Por complementar',color:'amber'},completo:{name:'Completo',color:'green'}} as const;
-type Status=keyof typeof ST;
-function fmt(x:string){return x||'No especificado en la matriz'}
-function StatCard({number,label,sub,kind}:{number:number;label:string;sub:string;kind:string}){return <div className={'metric '+kind}><div className="metric-kicker">{label}</div><div className="metric-number">{number}</div><span className="metric-sub">{sub}</span></div>}
-export default function Home(){
-const sb=client();const [section,setSection]=useState('inicio');const [standard,setStandard]=useState<number|null>(1);const [point,setPoint]=useState<string|null>(null);const [item,setItem]=useState<string|null>(null);const [query,setQuery]=useState('');const [filter,setFilter]=useState('todos');const [sidebar,setSidebar]=useState(false);const [tracking,setTracking]=useState<Tracking[]>([]);const [documents,setDocuments]=useState<Evidence[]>([]);const [alert,setAlert]=useState('');const [busy,setBusy]=useState(false);const [files,setFiles]=useState<File[]>([]);const [uploader,setUploader]=useState('');const [notes,setNotes]=useState('');
-const refresh=async()=>{if(!sb)return;const [d,t]=await Promise.all([sb.from('evidencias').select('*').order('created_at',{ascending:false}),sb.from('seguimiento').select('*')]);if(d.error)setAlert('No se pudo consultar la biblioteca: '+d.error.message);else setDocuments((d.data||[]) as Evidence[]);if(t.error)setAlert('No se pudo consultar el seguimiento: '+t.error.message);else setTracking((t.data||[]) as Tracking[])};
-useEffect(()=>{refresh();if(!sb)return;const ch=sb.channel('gestor-compartido').on('postgres_changes',{event:'*',schema:'public',table:'evidencias'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'seguimiento'},refresh).subscribe();return()=>{sb.removeChannel(ch)}},[]);
-const selected=all.find(a=>a.id===item);const s=standards.find(a=>a.id===standard);const current=selected?tracking.find(t=>t.point_id===selected.id):null;const getStatus=(id:string):Status=>(tracking.find(t=>t.point_id===id)?.status||'pendiente');const getDocs=(id:string)=>documents.filter(d=>d.point_id===id);const complete=all.filter(a=>getStatus(a.id)==='completo').length;const need=all.filter(a=>getStatus(a.id)==='complementar').length;
-const allPoints=standards.reduce((n,s)=>n+s.points.length,0);
-const numberedSubpoints=all.filter(a=>a.id.split('.').length===3).length;
-const generalPercent=Math.round(100*complete/(all.length||1));
-const working=all.filter(a=>getStatus(a.id)==='en_proceso').length;
-const pending=all.length-complete-need-working;
-const [uploadTarget,setUploadTarget]=useState<string|null>(null);
- const [toast,setToast]=useState('');
- const [deleteTarget,setDeleteTarget]=useState<Evidence|null>(null);
-const [deletePassword,setDeletePassword]=useState('');
-const [deleting,setDeleting]=useState(false);
-const matches=useMemo(()=>all.filter(a=>[a.id,a.text,a.standardTitle,a.type,a.responsible].join(' ').toLowerCase().includes(query.toLowerCase())&&(filter==='todos'||getStatus(a.id)===filter)),[query,filter,tracking]);
-function nav(x:string){setSection(x);setStandard(null);setPoint(null);setItem(null);setSidebar(false);setQuery('');setFilter('todos');setAlert('')}
-function openStd(n:number){setSection('estandares');setStandard(n);setPoint(null);setItem(null);setSidebar(false)}
-function openItem(code:string){const r=all.find(x=>x.id===code);if(!r)return;setSection('estandares');setStandard(r.standard);setPoint(r.point);setItem(code);setFiles([]);setNotes('');setAlert('')}
-async function saveStatus(status:Status){if(!sb||!selected)return;setBusy(true);const {error}=await sb.from('seguimiento').upsert({point_id:selected.id,status,notes:current?.notes||'',updated_at:new Date().toISOString()},{onConflict:'point_id'});if(error)setAlert(error.message);else{setAlert('Estado guardado correctamente.');await refresh()}setBusy(false)}
-async function upload(){const destination=uploadTarget||selected?.id;if(!sb||!destination||!files.length)return;setBusy(true);setAlert('');const whitelist=['pdf','doc','docx','xls','xlsx','png','jpg','jpeg'];for(const f of files){const ext=(f.name.split('.').pop()||'').toLowerCase();if(!whitelist.includes(ext)||f.size>15*1024*1024){setAlert('Archivo no válido: '+f.name+'. Admite PDF, Word, Excel e imágenes hasta 15 MB.');setBusy(false);return}const safe=f.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\w.\-]/g,'_').slice(0,90);const path='evidencias/'+crypto.randomUUID()+'/'+safe;const {error:uploadErr}=await sb.storage.from('evidencias').upload(path,f,{upsert:false,contentType:f.type||'application/pdf'});if(uploadErr){setAlert('Error al subir '+f.name+': '+uploadErr.message);setBusy(false);return}const {error:dbErr}=await sb.from('evidencias').insert({point_id:destination,file_name:f.name,file_path:path,mime_type:f.type||'application/pdf',size_bytes:f.size,uploader:uploader.trim()||'Colaborador',notes:notes.trim()});if(dbErr){await sb.storage.from('evidencias').remove([path]);setAlert('Error al registrar '+f.name+': '+dbErr.message);setBusy(false);return}}
-setFiles([]);setNotes('');setAlert('Documentos guardados correctamente. Cambia el estado cuando corresponda.');setToast('Documento(s) guardado(s) en '+destination);setUploadTarget(null);await refresh();setBusy(false)}
-async function deleteDocument(){
- if(!deleteTarget||!deletePassword.trim()||deleting)return;
- setDeleting(true);setAlert('');
- try{
-  const response=await fetch('/api/documents/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:deleteTarget.id,password:deletePassword})});
-  const result=await response.json();
-  if(!response.ok)throw new Error(result.error||'No se pudo eliminar el documento');
-  setDeleteTarget(null);setDeletePassword('');setAlert('Documento eliminado de la biblioteca y del almacenamiento.');
-  await refresh();
- }catch(err){setAlert(err instanceof Error?err.message:'No se pudo eliminar el documento')}finally{setDeleting(false)}
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import {
+  ArrowLeft,
+  BookOpen,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  Cloud,
+  ExternalLink,
+  FileText,
+  Filter,
+  Folder,
+  Info,
+  Layers3,
+  LayoutDashboard,
+  Library,
+  Menu,
+  Paperclip,
+  Search,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
+import matrix from '../lib/matriz.json';
+import { client, type Evidence, type Tracking } from '../lib/supabase';
+
+type Item = {
+  id: string;
+  text: string;
+  type: string;
+  scope: string;
+  matrix: string;
+  responsible: string;
+  manager: string;
+  gap: string;
+  action: string;
+};
+type Point = { id: string; criterion: string; items: Item[] };
+type Standard = { id: number; title: string; points: Point[] };
+type RecordItem = Item & {
+  standard: number;
+  standardTitle: string;
+  point: string;
+  criterion: string;
+};
+type Status = 'pendiente' | 'en_proceso' | 'complementar' | 'completo';
+type Existence = 'existente' | 'no_existente' | 'por_verificar';
+
+const standards = matrix as Standard[];
+const all: RecordItem[] = standards.flatMap((st) =>
+  st.points.flatMap((pt) =>
+    pt.items.map((it) => ({
+      ...it,
+      standard: st.id,
+      standardTitle: st.title,
+      point: pt.id,
+      criterion: pt.criterion,
+    })),
+  ),
+);
+
+const STATUS_META: Record<Status, { name: string; color: string }> = {
+  pendiente: { name: 'Pendiente', color: 'neutral' },
+  en_proceso: { name: 'Con datos simulados', color: 'purple' },
+  complementar: { name: 'Por complementar', color: 'amber' },
+  completo: { name: 'Completo', color: 'green' },
+};
+
+const EXISTENCE_OPTIONS = [
+  { value: 'todos', label: 'Todos' },
+  { value: 'existente', label: 'Existentes' },
+  { value: 'no_existente', label: 'No existentes' },
+  { value: 'por_verificar', label: 'Por verificar' },
+] as const;
+
+function fmt(value: string) {
+  return value || 'No especificado en la matriz';
 }
-async function openDoc(doc:Evidence){if(!sb)return;const {data,error}=await sb.storage.from('evidencias').createSignedUrl(doc.file_path,180);if(error||!data?.signedUrl){setAlert(error?.message||'No se pudo abrir el documento');return}window.open(data.signedUrl,'_blank','noopener,noreferrer')}
-function uploadForm(code:string){return <div className="upload-form">
-<label className="upload-drop"><Upload size={26}/><strong>{files.length?files.map(f=>f.name).join(', '):'Seleccionar documentos'}</strong><small>PDF, Word, Excel o imágenes · máximo 15 MB por archivo</small><input type="file" aria-label={'Elegir documentos para '+code} multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" disabled={!sb||busy} onChange={e=>setFiles(Array.from(e.target.files||[]))}/></label>
-<div className="upload-extra"><div className="field"><label htmlFor="collaborator">Colaborador (opcional)</label><input id="collaborator" value={uploader} onChange={e=>setUploader(e.target.value)} placeholder="Tu nombre"/></div><div className="field"><label htmlFor="observation">Observación (opcional)</label><textarea id="observation" rows={1} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Información adicional"/></div></div>
-<div className="upload-form-footer"><span className="upload-file-count">{files.length?files.length+' archivo(s) para subir':'Los documentos se guardan en la nube compartida'}</span><button type="button" className="primary-button" disabled={!sb||!files.length||busy} onClick={upload}><Upload size={17}/>{busy?'Subiendo…':' Guardar documento(s)'}</button></div>
-</div>}
-const menu=[{id:'inicio',title:'Panel general',ico:LayoutDashboard},{id:'estandares',title:'Estándares',ico:Layers3},{id:'biblioteca',title:'Biblioteca documental',ico:Library},{id:'pendientes',title:'Seguimiento',ico:ClipboardList}];
-const title=selected?'Detalle del medio de logro':section==='inicio'?'Panel de control':section==='estandares'?'Explorador de estándares':section==='biblioteca'?'Biblioteca documental':'Control de avance';
-return <div className="shell"><aside className={'sidebar '+(sidebar?'show':'')}><div className="brand"><div className="brand-symbol"><BookOpen size={21}/></div><div className="brand-title"><strong>Gestión de Calidad</strong><span>Derecho · UNFV</span></div><button className="mobile-close" aria-label="Cerrar menú" onClick={()=>setSidebar(false)}><X size={19}/></button></div><div className="side-caption">ESPACIO DE TRABAJO</div><nav>{menu.map(m=><button key={m.id} className={'side-nav '+(section===m.id?'active':'')} onClick={()=>nav(m.id)}><m.ico size={18}/><span>{m.title}</span>{section===m.id&&<span className="active-mark"/>}</button>)}</nav><section className="progress-general" aria-label="Progreso general del expediente">
-<div className="progress-header">Progreso general</div>
-<div className="progress-ring" aria-label={`${generalPercent}% completado`} style={{'--progress':`${generalPercent}%`} as React.CSSProperties}><span>{generalPercent}%</span></div>
-<p className="progress-lead"><b>{complete} de {all.length}</b> medios completados</p><div className="progress-stat"><span>Estándares</span><strong>{standards.length}</strong></div>
-<div className="progress-stat"><span>Puntos</span><strong>{allPoints}</strong></div>
-<div className="progress-stat"><span>Subpuntos numerados</span><strong>{numberedSubpoints}</strong></div>
-<div className="progress-divider"/>
-<div className="progress-stat"><span><i className="progress-dot done"/> Completos</span><strong>{complete}</strong></div>
-<div className="progress-stat"><span><i className="progress-dot working"/> En elaboración</span><strong>{working}</strong></div>
-<div className="progress-stat"><span><i className="progress-dot review"/> Por complementar</span><strong>{need}</strong></div>
-<div className="progress-stat"><span><i className="progress-dot waiting"/> Pendientes</span><strong>{pending}</strong></div><div className="progress-stat"><span>Archivos en biblioteca</span><strong>{documents.length}</strong></div>
-<p className="progress-caption">Avance basado en {all.length} medios registrables; incluye {all.length-numberedSubpoints} puntos sin subpunto numerado.</p>
-</section><div className="side-footer"><span className="pulse"/> {sb?'Repositorio conectado':'Modo consulta'} <small>Matriz GAB Derecho · 2026</small></div></aside>
-<div className="main"><header className="topbar"><button className="mobile-menu" onClick={()=>setSidebar(true)} aria-label="Abrir menú"><Menu size={22}/></button><div className="breadcrumbs">Facultad de Derecho <ChevronRight size={13}/> <b>{section==='inicio'?'Panel general':title}</b></div><div className="top-right"><span className="top-pill"><Cloud size={14}/> {sb?'Nube conectada':'Vista de consulta'}</span></div></header>
-<div className="container"><div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot"/> SISTEMA DE AUTOEVALUACIÓN Y ACREDITACIÓN</div><h1>{selected?selected.id+' · '+title:title}</h1><p>{selected?'Consulta los requisitos del medio de logro, revisa sus evidencias y actualiza su avance.':'Información y evidencias organizadas para trabajar con claridad, en un solo lugar.'}</p></div><div className="heading-badge"><BookOpen size={16}/> 18 estándares</div></div>
-{!sb&&<div className="banner"><Info size={18}/><span>La matriz está disponible para consulta. Para activar la carga compartida y el seguimiento, conecta un proyecto de Supabase desde la configuración de Vercel.</span></div>}{alert&&<div className="banner message"><Info size={18}/><span>{alert}</span><button onClick={()=>setAlert('')} aria-label="Cerrar">×</button></div>}
-{section==='inicio'&&!selected&&<><div className="metrics"><StatCard number={18} label="Estándares" sub="Matriz oficial" kind="m-one"/><StatCard number={all.length} label="Medios de logro" sub="Expedientes registrados" kind="m-two"/><StatCard number={documents.length} label="Documentos cargados" sub="Evidencias en biblioteca" kind="m-three"/><StatCard number={complete} label="Completados" sub={'De '+all.length+' medios'} kind="m-four"/></div><section className="block"><div className="block-title"><div><div className="eyebrow light">VISIÓN GENERAL</div><h2>Explorar estándares</h2><p>Selecciona un estándar para consultar sus puntos y medios de logro.</p></div><button className="text-action" onClick={()=>nav('estandares')}>Ver todos <ChevronRight size={16}/></button></div><div className="standard-grid">{standards.map(st=>{const items=st.points.flatMap(p=>p.items);const done=items.filter(i=>getStatus(i.id)==='completo').length;return <button className="standard-card" key={st.id} onClick={()=>openStd(st.id)}><div className="card-head"><span className="std-number">E{String(st.id).padStart(2,'0')}</span><Folder size={19}/></div><h3>{st.title}</h3><div className="card-meta"><span>{st.points.length} puntos · {items.length} medios</span><span>{done}/{items.length}</span></div><div className="progress"><i style={{width:items.length?(done/items.length*100)+'%':'0%'}}/></div></button>})}</div></section></>}
-{section==='estandares'&&!selected&&<><div className="standards-tabs" role="tablist" aria-label="Seleccionar estándar">{standards.map(st=><button key={st.id} role="tab" aria-selected={standard===st.id} className={standard===st.id?'active':''} onClick={()=>{openStd(st.id);setQuery('');setFilter('todos')}}>E{st.id}</button>)}</div>{standard===null?<><div className="toolbar"><div className="search"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por estándar, código o requisito..."/></div></div><div className="list-panel">{standards.filter(st=>!query||[st.id,st.title, ...st.points.flatMap(p=>p.items.map(i=>i.text))].join(' ').toLowerCase().includes(query.toLowerCase())).map(st=><button className="list-std" key={st.id} onClick={()=>openStd(st.id)}><div className="list-icon"><Layers3 size={19}/></div><div className="list-copy"><strong>Estándar {String(st.id).padStart(2,'0')}</strong><span>{st.title}</span></div><span className="list-meta">{st.points.length} puntos</span><ChevronRight size={17}/></button>)}</div></>:<><div className="std-banner redesigned"><div className="standard-id-block">{String(standard).padStart(2,'0')}</div><div className="banner-info"><div className="eyebrow">ESTÁNDAR {standard}</div><h2>{s?.title}</h2><p>{s?.points.length} puntos y {s?.points.reduce((n,p)=>n+p.items.length,0)} medios de logro organizados.</p></div><div className="banner-stats"><div className="banner-percentage">Progreso del estándar <b>{Math.round(100*(s?.points.flatMap(p=>p.items).filter(i=>getStatus(i.id)==='completo').length||0)/(s?.points.flatMap(p=>p.items).length||1))}%</b></div><div className="progress"><i style={{width:(100*(s?.points.flatMap(p=>p.items).filter(i=>getStatus(i.id)==='completo').length||0)/(s?.points.flatMap(p=>p.items).length||1))+'%'}}/></div><div className="banner-minis"><span><b>{s?.points.length}</b>Puntos</span><span><b>{s?.points.flatMap(p=>p.items).length}</b>Medios</span><span><b>{s?.points.flatMap(p=>p.items).filter(i=>getDocs(i.id).length>0).length}</b>Con archivo</span></div></div></div><div className="toolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar en este estándar..."/></div><div className="select-wrap"><Filter size={16}/><select aria-label="Filtrar por estado" value={filter} onChange={e=>setFilter(e.target.value)}><option value="todos">Todos los estados</option>{Object.entries(ST).map(([key,v])=><option value={key} key={key}>{v.name}</option>)}</select></div></div>{s?.points.map(p=>{const items=p.items.filter(i=>matches.some(m=>m.id===i.id));if(!items.length)return null;return <div className="point-panel" key={p.id}><button className="point-head" onClick={()=>setPoint(point===p.id?null:p.id)}><span className="point-code">{p.id}</span><span className="point-summary"><strong>Punto {p.id}</strong><small>{p.criterion?.slice(0,130)}{p.criterion?.length>130?'…':''}</small></span><span className="point-count">{p.items.length} medios</span><ChevronRight className={point===p.id?'rotated':''} size={17}/></button>{(point===p.id||query)&&<div className="expanded-point"><div className="criterion-preview"><b>Criterio de evaluación</b><p>{p.criterion||'No especificado'}</p></div><h3 className="subpoints-title">Subpuntos y medios de logro</h3>{items.map(i=><div className="item-row-actions" key={i.id}><button type="button" className="item-row-main" onClick={()=>openItem(i.id)}><span className="item-code">{i.id}</span><span className="item-summary">{i.text?.length>155?i.text.slice(0,155)+'…':i.text||'Medio de logro del punto'}<small>{i.type||'Documento'} · {getDocs(i.id).length} archivo(s)</small></span><span className={'chip '+ST[getStatus(i.id)].color}>{ST[getStatus(i.id)].name}</span><ChevronRight size={16}/></button><label className="quick-upload"><Upload size={16}/> Subir archivo<input type="file" aria-label={'Subir archivo al medio '+i.id} multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" disabled={!sb||busy} onChange={e=>{const chosen=Array.from(e.target.files||[]);if(chosen.length){setUploadTarget(i.id);setFiles(chosen);setNotes('')}}}/></label></div>)}</div>}</div>})}</>}</>}
-{selected&&<><button className="back" onClick={()=>{setItem(null);setPoint(selected.point)}}><ArrowLeft size={17}/> Estándar {selected.standard} · Punto {selected.point}</button><div className="details"><div className="detail-left"><div className="detail-card upload-first" id="upload-document"><div className="upload-first-head"><span className="upload-first-icon"><Upload size={26}/></span><div><h2>Subir documento</h2><p>Medio {selected.id} · Adjunta aquí el archivo principal o sus anexos</p></div></div>{uploadForm(selected.id)}</div><div className="detail-card"><div className="eyebrow">REQUISITO DOCUMENTAL</div><h2>{selected.text||selected.criterion}</h2><div className="tags"><span>{fmt(selected.type)}</span><span>E{selected.standard}</span><span>Punto {selected.point}</span></div><div className="rule"/><h3>Criterio de evaluación</h3><p>{fmt(selected.criterion)}</p><h3>Información de la matriz</h3><dl className="metadata"><dt>Existencia declarada</dt><dd><b>{fmt(selected.matrix)}</b></dd><dt>Tipo documental</dt><dd>{fmt(selected.type)}</dd><dt>Alcance</dt><dd>{fmt(selected.scope)}</dd><dt>Dependencia responsable</dt><dd>{fmt(selected.responsible)}</dd><dt>Gestor responsable</dt><dd>{fmt(selected.manager)}</dd></dl>{selected.gap&&<><h3>Brecha registrada</h3><p>{selected.gap}</p></>}{selected.action&&<><h3>Acción prevista</h3><p>{selected.action}</p></>}</div><div className="detail-card document-area" id="documents-section"><div className="section-inline"><h2><Paperclip size={21}/> Documentos adjuntos</h2><span className="soft-count">{getDocs(selected.id).length} archivo(s)</span></div>{getDocs(selected.id).length?getDocs(selected.id).map(doc=><div className="document-with-actions" key={doc.id}><button className="document-row" onClick={()=>openDoc(doc)} aria-label={'Abrir '+doc.file_name}><div className="doc-icon"><FileText size={20}/></div><span><strong>{doc.file_name}</strong><small>{doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')} · {(doc.size_bytes/1024).toFixed(0)} KB</small>{doc.notes&&<small>{doc.notes}</small>}</span><ExternalLink size={16}/></button><button className="delete-document" type="button" onClick={()=>{setDeleteTarget(doc);setDeletePassword('')}} aria-label={'Eliminar '+doc.file_name} title="Eliminar documento"><Trash2 size={16}/></button></div>):<div className="empty"><FileText size={28}/><strong>Aún no hay documentos cargados</strong><span>Los archivos añadidos aparecerán aquí para todos los colaboradores.</span></div>}</div></div><aside className="detail-right"><div className="detail-card"><div className="eyebrow">SEGUIMIENTO</div><h2>Estado del medio</h2><p className="muted">El avance es distinto de la existencia indicada en la matriz.</p><select className="status-select" disabled={!sb||busy} value={getStatus(selected.id)} onChange={e=>saveStatus(e.target.value as Status)}>{Object.entries(ST).map(([k,v])=><option value={k} key={k}>{v.name}</option>)}</select><span className="tiny-note"><CheckCircle2 size={15}/> {sb?'Cambios compartidos':'Activar conexión para editar'}</span></div><div className="detail-card"><h3>Ruta documental</h3><div className="path-list"><span>Estándar {selected.standard}</span><ChevronRight size={15}/><span>{selected.point}</span><ChevronRight size={15}/><b>{selected.id}</b></div></div></aside></div></>}
-{section==='biblioteca'&&!selected&&<><div className="toolbar"><div className="search"><Search size={18}/><input placeholder="Buscar documento, código o colaborador" value={query} onChange={e=>setQuery(e.target.value)}/></div></div><div className="list-panel padded"><div className="section-inline"><h2>Archivos del repositorio</h2><span className="soft-count">{documents.length} documentos</span></div>{documents.length?documents.filter(d=>[d.file_name,d.uploader,d.point_id].join(' ').toLowerCase().includes(query.toLowerCase())).map(doc=><div className="library-row" key={doc.id}><button className="document-row" onClick={()=>openDoc(doc)}><div className="doc-icon"><FileText size={20}/></div><span><strong>{doc.file_name}</strong><small>{doc.point_id} · {doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')}</small></span><ExternalLink size={16}/></button><button className="tiny-button" onClick={()=>openItem(doc.point_id)}>Ver ficha</button><button className="delete-document" type="button" onClick={()=>{setDeleteTarget(doc);setDeletePassword('')}} aria-label={'Eliminar '+doc.file_name} title="Eliminar documento"><Trash2 size={16}/></button></div>):<div className="empty"><Library size={30}/><strong>Biblioteca vacía</strong><span>Entra a un medio de logro para adjuntar su primer documento.</span></div>}</div></>}
-{section==='pendientes'&&!selected&&<><div className="toolbar"><div className="search"><Search size={17}/><input placeholder="Buscar pendientes por código o requisito" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="select-wrap"><Filter size={16}/><select aria-label="Estado" value={filter} onChange={e=>setFilter(e.target.value)}><option value="todos">Todos los estados</option>{Object.entries(ST).map(([k,v])=><option key={k} value={k}>{v.name}</option>)}</select></div></div><div className="list-panel padded"><div className="section-inline"><h2>Medios de logro</h2><span className="soft-count">{matches.length} resultados</span></div>{matches.map(a=><button className="item-row" key={a.id} onClick={()=>openItem(a.id)}><span className="item-code">{a.id}</span><span className="item-summary">{a.text||'Medio de logro del punto'}<small>Estándar {a.standard} · {getDocs(a.id).length} archivo(s)</small></span><span className={'chip '+ST[getStatus(a.id)].color}>{ST[getStatus(a.id)].name}</span><ChevronRight size={16}/></button>)}</div></>}
-{uploadTarget&&<div className="modal-overlay" role="presentation" onMouseDown={e=>{if(e.currentTarget===e.target&&!busy){setUploadTarget(null);setFiles([])}}}><section className="upload-dialog" role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title"><div className="upload-first-head"><span className="upload-first-icon"><Upload size={25}/></span><div><h2 id="upload-dialog-title">Subir archivo</h2><span className="dialog-code">Medio {uploadTarget}</span></div><button className="dialog-close" type="button" disabled={busy} onClick={()=>{setUploadTarget(null);setFiles([])}} aria-label="Cerrar"><X size={19}/></button></div><p className="dialog-caption">El documento se guardará en el medio de logro indicado y estará disponible para el equipo.</p>{uploadForm(uploadTarget)}</section></div>}
-{toast&&<div role="status" className="upload-confirmation"><CheckCircle2 size={20}/><span>{toast}</span><button aria-label="Cerrar mensaje" onClick={()=>setToast('')}>×</button></div>}
-{deleteTarget&&<div className="modal-overlay" onMouseDown={e=>{if(e.currentTarget===e.target&&!deleting)setDeleteTarget(null)}} role="presentation"><section role="dialog" aria-modal="true" aria-labelledby="delete-title" className="delete-dialog"><div className="delete-dialog-icon"><Trash2 size={21}/></div><h2 id="delete-title">¿Eliminar este documento?</h2><p><strong>{deleteTarget.file_name}</strong> desaparecerá de la biblioteca y se borrará del almacenamiento de Supabase. Esta acción no se puede deshacer.</p><label htmlFor="delete-password">Clave de administrador</label><div className="admin-password"><LockKeyhole size={16}/><input id="delete-password" type="password" autoFocus value={deletePassword} onChange={e=>setDeletePassword(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')deleteDocument()}} placeholder="Introduce la clave para eliminar" autoComplete="off"/></div><div className="modal-actions"><button type="button" className="cancel-delete" disabled={deleting} onClick={()=>{setDeleteTarget(null);setDeletePassword('')}}>Cancelar</button><button type="button" className="confirm-delete" disabled={deleting||!deletePassword} onClick={deleteDocument}>{deleting?'Eliminando...':'Sí, eliminar'}</button></div></section></div>}</div></div></div>}
+
+function normalizeExistence(value: string): Existence {
+  const clean = (value || '').trim().toLowerCase();
+  if (['si', 'sí'].includes(clean)) return 'existente';
+  if (clean === 'no') return 'no_existente';
+  return 'por_verificar';
+}
+
+function existenceLabel(value: string) {
+  const classification = normalizeExistence(value);
+  if (classification === 'existente') return 'Existe en la matriz';
+  if (classification === 'no_existente') return 'No existe en la matriz';
+  return 'Por verificar en la matriz';
+}
+
+function normalizeType(value: string) {
+  const clean = (value || '').trim().toLowerCase();
+  if (!clean) return 'Otro';
+  if (clean.includes('informe') || clean.includes('document') || clean.includes('silabus') || clean.includes('sylabus')) return 'Documento / Informe';
+  if (clean.includes('matriz') || clean.includes('matrilz')) return 'Matriz';
+  if (clean.includes('reglamento') || clean.includes('normativa')) return 'Reglamento';
+  if (clean.includes('acta')) return 'Acta';
+  if (clean.includes('plan')) return 'Plan';
+  if (clean.includes('manual')) return 'Manual';
+  if (clean.includes('resol')) return 'Resolución';
+  return 'Otro';
+}
+
+const TYPE_OPTIONS = ['Todos', 'Documento / Informe', 'Matriz', 'Reglamento', 'Acta', 'Plan', 'Manual', 'Resolución', 'Otro'];
+
+function StatCard({ number, label, sub, kind }: { number: number; label: string; sub: string; kind: string }) {
+  return (
+    <div className={`metric ${kind}`}>
+      <div className="metric-icon" />
+      <div className="metric-copy">
+        <div className="metric-kicker">{label}</div>
+        <div className="metric-number">{number}</div>
+        <span className="metric-sub">{sub}</span>
+      </div>
+      <ChevronRight size={18} className="metric-arrow" />
+    </div>
+  );
+}
+
+function formatBytes(bytes: number) {
+  if (!bytes) return '0 KB';
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+export default function Home() {
+  const sb = client();
+  const [section, setSection] = useState<'inicio' | 'estandares' | 'biblioteca' | 'pendientes'>('inicio');
+  const [standard, setStandard] = useState<number>(1);
+  const [point, setPoint] = useState<string | null>(null);
+  const [item, setItem] = useState<string | null>(null);
+  const [sidebar, setSidebar] = useState(false);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'todos' | Status>('todos');
+  const [existenceFilter, setExistenceFilter] = useState<'todos' | Existence>('todos');
+  const [typeFilter, setTypeFilter] = useState('Todos');
+  const [tracking, setTracking] = useState<Tracking[]>([]);
+  const [documents, setDocuments] = useState<Evidence[]>([]);
+  const [alert, setAlert] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploader, setUploader] = useState('');
+  const [notes, setNotes] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Evidence | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const refresh = async () => {
+    if (!sb) return;
+    const [docsRes, trackingRes] = await Promise.all([
+      sb.from('evidencias').select('*').order('created_at', { ascending: false }),
+      sb.from('seguimiento').select('*'),
+    ]);
+    if (docsRes.error) setAlert(`No se pudo consultar la biblioteca: ${docsRes.error.message}`);
+    else setDocuments((docsRes.data || []) as Evidence[]);
+    if (trackingRes.error) setAlert(`No se pudo consultar el seguimiento: ${trackingRes.error.message}`);
+    else setTracking((trackingRes.data || []) as Tracking[]);
+  };
+
+  useEffect(() => {
+    refresh();
+    if (!sb) return;
+    const channel = sb
+      .channel('gestor-compartido')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'evidencias' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'seguimiento' }, refresh)
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, []);
+
+  const getStatus = (id: string): Status => tracking.find((t) => t.point_id === id)?.status || 'pendiente';
+  const getDocs = (id: string) => documents.filter((d) => d.point_id === id);
+
+  const complete = all.filter((a) => getStatus(a.id) === 'completo').length;
+  const simulated = all.filter((a) => getStatus(a.id) === 'en_proceso').length;
+  const need = all.filter((a) => getStatus(a.id) === 'complementar').length;
+  const pending = all.filter((a) => getStatus(a.id) === 'pendiente').length;
+  const allPoints = standards.reduce((sum, st) => sum + st.points.length, 0);
+  const numberedSubpoints = all.filter((a) => a.id.split('.').length === 3).length;
+  const generalPercent = Math.round((complete / Math.max(all.length, 1)) * 100);
+  const selectedStandard = standards.find((s) => s.id === standard) || standards[0];
+  const selected = all.find((a) => a.id === item) || null;
+
+  const filteredMatrixItems = useMemo(() => {
+    return all.filter((record) => {
+      const haystack = [
+        record.id,
+        record.text,
+        record.standardTitle,
+        record.point,
+        normalizeType(record.type),
+        record.type,
+        record.responsible,
+        record.manager,
+        ...getDocs(record.id).map((doc) => `${doc.file_name} ${doc.uploader} ${doc.notes}`),
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      if (query && !haystack.includes(query.toLowerCase())) return false;
+      if (statusFilter !== 'todos' && getStatus(record.id) !== statusFilter) return false;
+      if (existenceFilter !== 'todos' && normalizeExistence(record.matrix) !== existenceFilter) return false;
+      if (typeFilter !== 'Todos' && normalizeType(record.type) !== typeFilter) return false;
+      return true;
+    });
+  }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents]);
+
+  const libraryRows = useMemo(() => {
+    return [...filteredMatrixItems].sort((a, b) => {
+      const docDiff = getDocs(b.id).length - getDocs(a.id).length;
+      if (docDiff !== 0) return docDiff;
+      return a.id.localeCompare(b.id);
+    });
+  }, [filteredMatrixItems, documents]);
+
+  const recentActivity = useMemo(() => {
+    const docEvents = documents.slice(0, 3).map((d) => ({
+      id: d.id,
+      title: d.file_name,
+      subtitle: `Documento cargado · ${d.point_id}`,
+      when: new Date(d.created_at).toLocaleDateString('es-PE'),
+      type: 'documento',
+    }));
+    const trackingEvents = tracking
+      .filter((t) => t.status === 'completo')
+      .slice(0, 2)
+      .map((t) => ({
+        id: t.point_id,
+        title: `Punto marcado como completo`,
+        subtitle: t.point_id,
+        when: new Date(t.updated_at).toLocaleDateString('es-PE'),
+        type: 'estado',
+      }));
+    return [...docEvents, ...trackingEvents].slice(0, 4);
+  }, [documents, tracking]);
+
+  function resetFilters() {
+    setQuery('');
+    setStatusFilter('todos');
+    setExistenceFilter('todos');
+    setTypeFilter('Todos');
+  }
+
+  function nav(next: 'inicio' | 'estandares' | 'biblioteca' | 'pendientes') {
+    setSection(next);
+    setItem(null);
+    setPoint(null);
+    setSidebar(false);
+    resetFilters();
+    setAlert('');
+  }
+
+  function openStd(id: number) {
+    setStandard(id);
+    setSection('estandares');
+    setPoint(null);
+    setItem(null);
+    setSidebar(false);
+  }
+
+  function openItem(code: string) {
+    const record = all.find((row) => row.id === code);
+    if (!record) return;
+    setSection('estandares');
+    setStandard(record.standard);
+    setPoint(record.point);
+    setItem(record.id);
+    setFiles([]);
+    setUploader('');
+    setNotes('');
+    setAlert('');
+  }
+
+  async function saveStatus(status: Status) {
+    if (!sb || !selected) return;
+    setBusy(true);
+    const { error } = await sb
+      .from('seguimiento')
+      .upsert(
+        {
+          point_id: selected.id,
+          status,
+          notes: '',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'point_id' },
+      );
+    if (error) setAlert(error.message);
+    else {
+      setAlert('Estado guardado correctamente.');
+      await refresh();
+    }
+    setBusy(false);
+  }
+
+  async function upload() {
+    if (!sb || !selected || !files.length) return;
+    setBusy(true);
+    setAlert('');
+    const whitelist = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
+    for (const file of files) {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (!whitelist.includes(ext) || file.size > 15 * 1024 * 1024) {
+        setAlert(`Archivo no válido: ${file.name}. Admite PDF, Word, Excel e imágenes hasta 15 MB.`);
+        setBusy(false);
+        return;
+      }
+      const safeName = file.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w.\-]/g, '_')
+        .slice(0, 90);
+      const path = `evidencias/${crypto.randomUUID()}/${safeName}`;
+      const { error: uploadErr } = await sb.storage.from('evidencias').upload(path, file, {
+        upsert: false,
+        contentType: file.type || 'application/pdf',
+      });
+      if (uploadErr) {
+        setAlert(`Error al subir ${file.name}: ${uploadErr.message}`);
+        setBusy(false);
+        return;
+      }
+      const { error: dbErr } = await sb.from('evidencias').insert({
+        point_id: selected.id,
+        file_name: file.name,
+        file_path: path,
+        mime_type: file.type || 'application/pdf',
+        size_bytes: file.size,
+        uploader: uploader.trim() || 'Colaborador',
+        notes: notes.trim(),
+      });
+      if (dbErr) {
+        await sb.storage.from('evidencias').remove([path]);
+        setAlert(`Error al registrar ${file.name}: ${dbErr.message}`);
+        setBusy(false);
+        return;
+      }
+    }
+    setFiles([]);
+    setUploader('');
+    setNotes('');
+    setAlert('Documentos cargados correctamente.');
+    await refresh();
+    setBusy(false);
+  }
+
+  async function openDoc(doc: Evidence) {
+    if (!sb) return;
+    const { data, error } = await sb.storage.from('evidencias').createSignedUrl(doc.file_path, 180);
+    if (error || !data?.signedUrl) {
+      setAlert(error?.message || 'No se pudo abrir el documento');
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  async function deleteDocument() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setAlert('');
+    try {
+      const response = await fetch('/api/documents/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deleteTarget.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo eliminar el documento');
+      setDeleteTarget(null);
+      setAlert('Documento eliminado correctamente.');
+      await refresh();
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : 'No se pudo eliminar el documento');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const title = selected
+    ? 'Detalle del medio de logro'
+    : section === 'inicio'
+      ? 'Panel general'
+      : section === 'estandares'
+        ? 'Explorador de estándares'
+        : section === 'biblioteca'
+          ? 'Biblioteca documental'
+          : 'Seguimiento';
+
+  const menu = [
+    { id: 'inicio', title: 'Panel general', icon: LayoutDashboard },
+    { id: 'estandares', title: 'Estándares', icon: Layers3 },
+    { id: 'biblioteca', title: 'Biblioteca documental', icon: Library },
+    { id: 'pendientes', title: 'Seguimiento', icon: ClipboardList },
+  ] as const;
+
+  return (
+    <div className="shell shell-modern">
+      <aside className={`sidebar sidebar-modern ${sidebar ? 'show' : ''}`}>
+        <div className="brand brand-modern">
+          <div className="brand-symbol">
+            <BookOpen size={22} />
+          </div>
+          <div className="brand-title">
+            <strong>Gestión de Calidad</strong>
+            <span>Derecho · UNFV</span>
+          </div>
+          <button className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebar(false)}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="side-caption">ESPACIO DE TRABAJO</div>
+        <nav>
+          {menu.map((entry) => (
+            <button key={entry.id} className={`side-nav ${section === entry.id ? 'active' : ''}`} onClick={() => nav(entry.id)}>
+              <entry.icon size={18} />
+              <span>{entry.title}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="unfv-mini-panel">
+          <div className="unfv-mini-mark" />
+          <div>
+            <strong>Universidad Nacional</strong>
+            <span>Federico Villarreal</span>
+            <small>Facultad de Derecho · Gestión de Calidad 2026</small>
+          </div>
+        </div>
+        <div className="side-footer">
+          <span className="pulse" /> {sb ? 'Repositorio conectado' : 'Modo consulta'}
+          <small>Matriz GAB Derecho · 2026</small>
+        </div>
+      </aside>
+
+      <div className="main">
+        <header className="topbar topbar-modern">
+          <button className="mobile-menu" onClick={() => setSidebar(true)} aria-label="Abrir menú">
+            <Menu size={22} />
+          </button>
+          <div className="breadcrumbs">
+            Facultad de Derecho <ChevronRight size={13} /> <b>{title}</b>
+          </div>
+          <div className="top-right">
+            <div className="top-search">
+              <Search size={17} />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar estándares, documentos..." />
+            </div>
+            <span className="top-pill ok">
+              <Cloud size={15} /> Nube conectada
+            </span>
+          </div>
+        </header>
+
+        <div className="container page-modern">
+          {alert && (
+            <div className={`banner ${busy ? '' : 'message'}`}>
+              <Info size={17} />
+              <span>{alert}</span>
+              <button onClick={() => setAlert('')} aria-label="Cerrar mensaje">
+                ×
+              </button>
+            </div>
+          )}
+
+          {!selected && (
+            <div className="page-heading page-hero with-photo">
+              <div>
+                <div className="eyebrow">
+                  <span className="eyebrow-dot" /> SISTEMA DE AUTOEVALUACIÓN Y ACREDITACIÓN
+                </div>
+                <h1>{section === 'inicio' ? 'Panel de control' : title}</h1>
+                <p>Información y evidencias organizadas para trabajar con claridad, en un solo lugar.</p>
+              </div>
+              <div className="heading-badge">
+                <BookOpen size={18} /> 18 estándares
+              </div>
+            </div>
+          )}
+
+          {section === 'inicio' && !selected && (
+            <div className="home-layout">
+              <div className="home-main">
+                <div className="metrics metrics-modern">
+                  <StatCard number={standards.length} label="Estándares" sub="Matriz oficial" kind="m-one" />
+                  <StatCard number={allPoints} label="Puntos" sub="Total de evaluación" kind="m-two" />
+                  <StatCard number={all.length} label="Medios de logro" sub="Subpuntos numerados" kind="m-three" />
+                  <StatCard number={documents.length} label="Documentos cargados" sub="Evidencias en biblioteca" kind="m-four" />
+                </div>
+
+                <section className="progress-overview-card">
+                  <div className="progress-overview-head">
+                    <h2>Progreso general</h2>
+                  </div>
+                  <div className="progress-overview-body">
+                    <div className="progress-hero">
+                      <div className="progress-donut" style={{ ['--progress' as string]: `${generalPercent}%` } as CSSProperties}>
+                        <span>{generalPercent}%</span>
+                      </div>
+                      <div className="progress-copy">
+                        <strong>{complete} de {all.length} medios completados</strong>
+                        <p>Avance basado en {all.length} medios registrables; incluye {all.length - numberedSubpoints} puntos sin subpunto numerado.</p>
+                        <div className="progress-line"><i style={{ width: `${generalPercent}%` }} /></div>
+                      </div>
+                    </div>
+                    <div className="progress-counters">
+                      <div className="overview-mini green"><span>Completos</span><b>{complete}</b></div>
+                      <div className="overview-mini purple"><span>Con datos simulados</span><b>{simulated}</b></div>
+                      <div className="overview-mini amber"><span>Por complementar</span><b>{need}</b></div>
+                      <div className="overview-mini neutral"><span>Pendientes</span><b>{pending}</b></div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="block">
+                  <div className="block-title">
+                    <div>
+                      <h2>Explorar estándares</h2>
+                      <p>Selecciona un estándar para consultar sus puntos y medios de logro.</p>
+                    </div>
+                  </div>
+                  <div className="standard-grid grid-modern">
+                    {standards.slice(0, 6).map((st) => {
+                      const stItems = st.points.flatMap((pt) => pt.items);
+                      const stCompleted = stItems.filter((it) => getStatus(it.id) === 'completo').length;
+                      const pct = Math.round((stCompleted / Math.max(stItems.length, 1)) * 100);
+                      return (
+                        <button className="standard-card standard-card-modern" key={st.id} onClick={() => openStd(st.id)}>
+                          <div className="card-head">
+                            <span className="std-number">E{String(st.id).padStart(2, '0')}</span>
+                            <Folder size={18} />
+                          </div>
+                          <h3>{st.title}</h3>
+                          <div className="card-meta">
+                            <span>{st.points.length} puntos · {stItems.length} medios</span>
+                            <span>{stCompleted}/{stItems.length}</span>
+                          </div>
+                          <div className="progress"><i style={{ width: `${pct}%` }} /></div>
+                          <div className="card-actions-inline">Ver detalle <ChevronRight size={14} /></div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
+
+              <aside className="home-side">
+                <section className="side-widget">
+                  <h3>Acciones rápidas</h3>
+                  <button className="action-cta" onClick={() => nav('biblioteca')}><Upload size={18} /> Subir documento</button>
+                  <button className="action-secondary" onClick={() => nav('estandares')}><Paperclip size={18} /> Cargar evidencia</button>
+                </section>
+
+                <section className="side-widget">
+                  <h3>Actividad reciente</h3>
+                  <div className="activity-list">
+                    {recentActivity.length ? recentActivity.map((event) => (
+                      <div key={`${event.type}-${event.id}`} className="activity-row">
+                        <div className={`activity-icon ${event.type === 'documento' ? 'doc' : 'ok'}`} />
+                        <div>
+                          <strong>{event.title}</strong>
+                          <small>{event.subtitle}</small>
+                        </div>
+                        <span>{event.when}</span>
+                      </div>
+                    )) : <div className="empty slim"><strong>Sin actividad reciente</strong></div>}
+                  </div>
+                </section>
+
+                <section className="side-widget promo-widget">
+                  <div>
+                    <h3>Biblioteca documental</h3>
+                    <p>Accede a normas, guías y referencias de apoyo.</p>
+                    <button className="action-secondary" onClick={() => nav('biblioteca')}>Ir a la biblioteca</button>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          )}
+
+          {section === 'estandares' && !selected && (
+            <>
+              <div className="standards-tabs">
+                {standards.map((st) => (
+                  <button key={st.id} className={st.id === standard ? 'active' : ''} onClick={() => openStd(st.id)}>
+                    E{st.id}
+                  </button>
+                ))}
+              </div>
+              <div className="std-banner redesigned">
+                <div className="standard-id-block">{String(selectedStandard.id).padStart(2, '0')}</div>
+                <div className="banner-info">
+                  <div className="eyebrow">ESTÁNDAR {selectedStandard.id}</div>
+                  <h2>{selectedStandard.title}</h2>
+                  <p>{selectedStandard.points.length} puntos de evaluación y {selectedStandard.points.flatMap((pt) => pt.items).length} medios organizados.</p>
+                </div>
+                <div className="banner-stats">
+                  <div className="banner-percentage">
+                    <span>Progreso general</span>
+                    <b>{Math.round((selectedStandard.points.flatMap((pt) => pt.items).filter((it) => getStatus(it.id) === 'completo').length / Math.max(selectedStandard.points.flatMap((pt) => pt.items).length, 1)) * 100)}%</b>
+                  </div>
+                  <div className="progress"><i style={{ width: `${Math.round((selectedStandard.points.flatMap((pt) => pt.items).filter((it) => getStatus(it.id) === 'completo').length / Math.max(selectedStandard.points.flatMap((pt) => pt.items).length, 1)) * 100)}%` }} /></div>
+                  <div className="banner-minis">
+                    <span><b>{selectedStandard.points.length}</b>Puntos</span>
+                    <span><b>{selectedStandard.points.flatMap((pt) => pt.items).length}</b>Medios</span>
+                    <span><b>{selectedStandard.points.flatMap((pt) => pt.items).filter((it) => getDocs(it.id).length > 0).length}</b>Con archivo</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="toolbar toolbar-extended">
+                <div className="search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar estándar, código o documento..." /></div>
+                <div className="select-wrap"><Filter size={16} /><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}><option value="todos">Todos los estados</option>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}</select></div>
+                <div className="select-wrap"><select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>{EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
+                <div className="select-wrap"><select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>{TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
+              </div>
+
+              {selectedStandard.points.map((pt) => {
+                const pointItems = pt.items.filter((it) => filteredMatrixItems.some((row) => row.id === it.id));
+                if (!pointItems.length) return null;
+                return (
+                  <div className="point-panel" key={pt.id}>
+                    <button className="point-head" onClick={() => setPoint(point === pt.id ? null : pt.id)}>
+                      <span className="point-code">{pt.id}</span>
+                      <span className="point-summary">
+                        <strong>Punto {pt.id}</strong>
+                        <small>{pt.criterion}</small>
+                      </span>
+                      <span className="point-count">{pointItems.length} medios</span>
+                      <ChevronRight className={point === pt.id ? 'rotated' : ''} size={17} />
+                    </button>
+                    {(point === pt.id || Boolean(query)) && (
+                      <div className="expanded-point">
+                        <div className="criterion-preview"><b>Criterio del punto</b><p>{pt.criterion}</p></div>
+                        <h3 className="subpoints-title">Subpuntos y medios de logro</h3>
+                        {pointItems.map((record) => (
+                          <div className="item-row item-row-rich" key={record.id}>
+                            <button className="item-main" onClick={() => openItem(record.id)}>
+                              <span className="item-code">{record.id}</span>
+                              <span className="item-summary">
+                                {record.text}
+                                <small>{normalizeType(record.type)} · {existenceLabel(record.matrix)} · {getDocs(record.id).length} archivo(s)</small>
+                              </span>
+                            </button>
+                            <span className={`chip ${STATUS_META[getStatus(record.id)].color}`}>{STATUS_META[getStatus(record.id)].name}</span>
+                            <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {selected && (
+            <>
+              <button className="back" onClick={() => setItem(null)}><ArrowLeft size={17} /> Estándar {selected.standard} · Punto {selected.point}</button>
+              <div className="details">
+                <div className="detail-left">
+                  <div className="detail-card upload-card-top">
+                    <div className="section-inline">
+                      <h2><Upload size={20} /> Subir documento</h2>
+                      <span className="soft-count">Medio {selected.id}</span>
+                    </div>
+                    <p className="muted">Adjunta aquí el archivo principal o sus anexos. La carga es visible para todos los colaboradores.</p>
+                    <label className={`dropzone ${sb ? '' : 'disabled'}`}>
+                      <Upload size={27} />
+                      <strong>{files.length ? files.map((f) => f.name).join(', ') : 'Seleccionar documentos'}</strong>
+                      <span>PDF, Word, Excel o imágenes · Hasta 15 MB por archivo</span>
+                      <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" disabled={!sb || busy} onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                    </label>
+                    <div className="upload-grid-fields">
+                      <div className="field"><label htmlFor="uploader">Colaborador</label><input id="uploader" value={uploader} onChange={(e) => setUploader(e.target.value)} placeholder="Opcional" /></div>
+                      <div className="field"><label htmlFor="notes">Observación</label><textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Información complementaria" /></div>
+                    </div>
+                    <button className="primary-button" disabled={!sb || !files.length || busy} onClick={upload}>{busy ? 'Guardando...' : 'Guardar documentos'}</button>
+                  </div>
+
+                  <div className="detail-card">
+                    <div className="eyebrow">REQUISITO DOCUMENTAL</div>
+                    <h2>{selected.text || selected.criterion}</h2>
+                    <div className="tags">
+                      <span>{normalizeType(selected.type)}</span>
+                      <span>{existenceLabel(selected.matrix)}</span>
+                      <span>E{selected.standard}</span>
+                      <span>Punto {selected.point}</span>
+                    </div>
+                    <div className="rule" />
+                    <h3>Criterio de evaluación</h3>
+                    <p>{fmt(selected.criterion)}</p>
+                    <h3>Información de la matriz</h3>
+                    <dl className="metadata">
+                      <dt>Existencia declarada</dt><dd><b>{fmt(selected.matrix)}</b></dd>
+                      <dt>Tipo documental</dt><dd>{normalizeType(selected.type)}</dd>
+                      <dt>Alcance</dt><dd>{fmt(selected.scope)}</dd>
+                      <dt>Dependencia responsable</dt><dd>{fmt(selected.responsible)}</dd>
+                      <dt>Gestor responsable</dt><dd>{fmt(selected.manager)}</dd>
+                    </dl>
+                    {selected.gap && <><h3>Brecha registrada</h3><p>{selected.gap}</p></>}
+                    {selected.action && <><h3>Acción prevista</h3><p>{selected.action}</p></>}
+                  </div>
+
+                  <div className="detail-card">
+                    <div className="section-inline">
+                      <h2><Paperclip size={20} /> Documentos adjuntos</h2>
+                      <span className="soft-count">{getDocs(selected.id).length} archivo(s)</span>
+                    </div>
+                    {getDocs(selected.id).length ? (
+                      getDocs(selected.id).map((doc) => (
+                        <div className="document-with-actions" key={doc.id}>
+                          <button className="document-row" onClick={() => openDoc(doc)}>
+                            <div className="doc-icon"><FileText size={20} /></div>
+                            <span>
+                              <strong>{doc.file_name}</strong>
+                              <small>{doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')} · {formatBytes(doc.size_bytes)}</small>
+                              {doc.notes && <small>{doc.notes}</small>}
+                            </span>
+                            <ExternalLink size={16} />
+                          </button>
+                          <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento"><Trash2 size={16} /></button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="empty"><FileText size={28} /><strong>Aún no hay documentos cargados</strong><span>Los archivos añadidos aparecerán aquí para todos los colaboradores.</span></div>
+                    )}
+                  </div>
+                </div>
+                <aside className="detail-right">
+                  <div className="detail-card">
+                    <div className="eyebrow">SEGUIMIENTO</div>
+                    <h2>Estado del medio</h2>
+                    <p className="muted">El avance es distinto de la existencia indicada en la matriz.</p>
+                    <select className="status-select" disabled={!sb || busy} value={getStatus(selected.id)} onChange={(e) => saveStatus(e.target.value as Status)}>
+                      {Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}
+                    </select>
+                    <span className="tiny-note"><CheckCircle2 size={15} /> {sb ? 'Cambios compartidos' : 'Activar conexión para editar'}</span>
+                  </div>
+                  <div className="detail-card">
+                    <h3>Ruta documental</h3>
+                    <div className="path-list"><span>Estándar {selected.standard}</span><ChevronRight size={15} /><span>{selected.point}</span><ChevronRight size={15} /><b>{selected.id}</b></div>
+                  </div>
+                </aside>
+              </div>
+            </>
+          )}
+
+          {section === 'biblioteca' && !selected && (
+            <>
+              <div className="toolbar toolbar-extended">
+                <div className="search"><Search size={18} /><input placeholder="Buscar documento, código o colaborador" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+                <div className="select-wrap"><select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>{EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
+                <div className="select-wrap"><select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>{TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
+                <div className="select-wrap"><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}><option value="todos">Todos los estados</option>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}</select></div>
+              </div>
+
+              <div className="library-summary-bar">
+                <span className="filter-pill active">{libraryRows.length} registros</span>
+                <span className="filter-pill">Documento / Informe agrupados</span>
+                <button className="tiny-button" onClick={resetFilters}>Limpiar filtros</button>
+              </div>
+
+              <div className="list-panel padded">
+                <div className="section-inline">
+                  <h2>Biblioteca y matriz documental</h2>
+                  <span className="soft-count">{documents.length} archivos cargados</span>
+                </div>
+                {libraryRows.map((record) => {
+                  const docs = getDocs(record.id);
+                  return (
+                    <div className="library-record" key={record.id}>
+                      <div className="library-record-head">
+                        <div>
+                          <strong>{record.id} · {record.text}</strong>
+                          <small>{record.standardTitle} · Punto {record.point}</small>
+                        </div>
+                        <div className="library-badges">
+                          <span className={`chip ${normalizeExistence(record.matrix) === 'existente' ? 'green' : 'neutral'}`}>{existenceLabel(record.matrix)}</span>
+                          <span className="chip blueish">{normalizeType(record.type)}</span>
+                          <span className={`chip ${STATUS_META[getStatus(record.id)].color}`}>{STATUS_META[getStatus(record.id)].name}</span>
+                        </div>
+                      </div>
+                      <div className="library-record-body">
+                        <div className="library-record-meta">
+                          <span><b>Responsable:</b> {fmt(record.responsible)}</span>
+                          <span><b>Gestor:</b> {fmt(record.manager)}</span>
+                        </div>
+                        {docs.length ? docs.map((doc) => (
+                          <div className="document-with-actions" key={doc.id}>
+                            <button className="document-row" onClick={() => openDoc(doc)}>
+                              <div className="doc-icon"><FileText size={20} /></div>
+                              <span>
+                                <strong>{doc.file_name}</strong>
+                                <small>{doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')} · {formatBytes(doc.size_bytes)}</small>
+                              </span>
+                              <ExternalLink size={16} />
+                            </button>
+                            <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
+                            <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento"><Trash2 size={16} /></button>
+                          </div>
+                        )) : (
+                          <div className="library-missing">Sin archivo cargado todavía. Este medio seguirá visible para su seguimiento.</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {!libraryRows.length && <div className="empty"><Library size={30} /><strong>No hay resultados</strong><span>Prueba con otro tipo documental o limpia los filtros.</span></div>}
+              </div>
+            </>
+          )}
+
+          {section === 'pendientes' && !selected && (
+            <>
+              <div className="toolbar toolbar-extended">
+                <div className="search"><Search size={17} /><input placeholder="Buscar pendientes por código o requisito" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+                <div className="select-wrap"><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}><option value="todos">Todos los estados</option>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}</select></div>
+                <div className="select-wrap"><select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>{EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
+              </div>
+              <div className="list-panel padded">
+                <div className="section-inline"><h2>Medios de logro</h2><span className="soft-count">{filteredMatrixItems.length} resultados</span></div>
+                {filteredMatrixItems.map((record) => (
+                  <div className="item-row item-row-rich" key={record.id}>
+                    <button className="item-main" onClick={() => openItem(record.id)}>
+                      <span className="item-code">{record.id}</span>
+                      <span className="item-summary">{record.text}<small>{record.standardTitle} · {normalizeType(record.type)} · {getDocs(record.id).length} archivo(s)</small></span>
+                    </button>
+                    <span className={`chip ${STATUS_META[getStatus(record.id)].color}`}>{STATUS_META[getStatus(record.id)].name}</span>
+                    <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {deleteTarget && (
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.currentTarget === e.target && !deleting) setDeleteTarget(null); }} role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="delete-title" className="delete-dialog">
+            <div className="delete-dialog-icon"><Trash2 size={21} /></div>
+            <h2 id="delete-title">¿Eliminar este documento?</h2>
+            <p><strong>{deleteTarget.file_name}</strong> desaparecerá de la biblioteca y se borrará del almacenamiento de Supabase. Esta acción no se puede deshacer.</p>
+            <div className="modal-actions">
+              <button type="button" className="cancel-delete" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancelar</button>
+              <button type="button" className="confirm-delete" disabled={deleting} onClick={deleteDocument}>{deleting ? 'Eliminando...' : 'Sí, eliminar'}</button>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
