@@ -6,6 +6,7 @@ import {
   CircleAlert,
   BookOpen,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   ClipboardList,
   Cloud,
@@ -111,6 +112,7 @@ function normalizeType(value: string) {
 }
 
 const TYPE_OPTIONS = ['Todos', 'Documento / Informe', 'Matriz', 'Reglamento', 'Acta', 'Plan', 'Manual', 'Resolución', 'Otro'];
+const LIBRARY_PAGE_SIZE = 10;
 
 function StatCard({ number, label, sub, kind }: { number: number; label: string; sub: string; kind: string }) {
   return (
@@ -144,6 +146,8 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState<'todos' | Status>('todos');
   const [existenceFilter, setExistenceFilter] = useState<'todos' | Existence>('todos');
   const [typeFilter, setTypeFilter] = useState('Todos');
+  const [libraryStandardFilter, setLibraryStandardFilter] = useState('todos');
+  const [libraryPage, setLibraryPage] = useState(1);
   const [tracking, setTracking] = useState<Tracking[]>([]);
   const [documents, setDocuments] = useState<Evidence[]>([]);
   const [alert, setAlert] = useState<Notice | null>(null);
@@ -259,12 +263,24 @@ export default function Home() {
   }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents]);
 
   const libraryRows = useMemo(() => {
-    return [...filteredMatrixItems].sort((a, b) => {
-      const docDiff = getDocs(b.id).length - getDocs(a.id).length;
-      if (docDiff !== 0) return docDiff;
-      return a.id.localeCompare(b.id);
+    const search = query.trim().toLowerCase();
+    return documents.flatMap((doc) => {
+      const record = all.find((row) => row.id === doc.point_id);
+      if (!record) return [];
+      const status = getStatus(record.id);
+      if (search && !`${doc.file_name} ${doc.uploader} ${doc.notes} ${record.id} ${record.standardTitle} ${record.type}`.toLowerCase().includes(search)) return [];
+      if (libraryStandardFilter !== 'todos' && record.standard !== Number(libraryStandardFilter)) return [];
+      if (typeFilter !== 'Todos' && normalizeType(record.type) !== typeFilter) return [];
+      if (statusFilter !== 'todos' && status !== statusFilter) return [];
+      return [{ doc, record, status }];
     });
-  }, [filteredMatrixItems, documents]);
+  }, [documents, tracking, query, libraryStandardFilter, typeFilter, statusFilter]);
+
+  const libraryPageCount = Math.max(1, Math.ceil(libraryRows.length / LIBRARY_PAGE_SIZE));
+  const visibleLibraryRows = libraryRows.slice(
+    (Math.min(libraryPage, libraryPageCount) - 1) * LIBRARY_PAGE_SIZE,
+    Math.min(libraryPage, libraryPageCount) * LIBRARY_PAGE_SIZE,
+  );
 
   const recentActivity = useMemo(() => {
     const docEvents = documents.slice(0, 3).map((d) => ({
@@ -292,7 +308,13 @@ export default function Home() {
     setStatusFilter('todos');
     setExistenceFilter('todos');
     setTypeFilter('Todos');
+    setLibraryStandardFilter('todos');
+    setLibraryPage(1);
   }
+
+  useEffect(() => {
+    setLibraryPage(1);
+  }, [query, statusFilter, typeFilter, libraryStandardFilter]);
 
   function nav(next: 'inicio' | 'estandares' | 'biblioteca' | 'pendientes') {
     setSection(next);
@@ -476,7 +498,6 @@ export default function Home() {
     { id: 'inicio', title: 'Panel general', icon: LayoutDashboard },
     { id: 'estandares', title: 'Estándares', icon: Layers3 },
     { id: 'biblioteca', title: 'Biblioteca documental', icon: Library },
-    { id: 'pendientes', title: 'Seguimiento', icon: ClipboardList },
   ] as const;
 
   return (
@@ -835,64 +856,52 @@ export default function Home() {
             <>
               <div className="toolbar toolbar-extended">
                 <div className="search"><Search size={18} /><input placeholder="Buscar documento, código o colaborador" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
-                <div className="select-wrap"><select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>{EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
+                <div className="select-wrap"><select aria-label="Filtrar por estándar" value={libraryStandardFilter} onChange={(e) => setLibraryStandardFilter(e.target.value)}><option value="todos">Todos los estándares</option>{standards.map((entry) => <option key={entry.id} value={entry.id}>Estándar {entry.id} · {entry.title}</option>)}</select></div>
                 <div className="select-wrap"><select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>{TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
                 <div className="select-wrap"><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}><option value="todos">Todos los estados</option>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}</select></div>
               </div>
 
               <div className="library-summary-bar">
-                <span className="filter-pill active">{libraryRows.length} registros</span>
-                <span className="filter-pill">Documento / Informe agrupados</span>
+                <span className="filter-pill active">{libraryRows.length} documentos</span>
                 <button className="tiny-button" onClick={resetFilters}>Limpiar filtros</button>
               </div>
 
               <div className="list-panel padded">
                 <div className="section-inline">
-                  <h2>Biblioteca y matriz documental</h2>
-                  <span className="soft-count">{documents.length} archivos cargados</span>
+                  <h2>Documentos cargados</h2>
+                  <span className="soft-count">{documents.length} archivos en total</span>
                 </div>
-                {libraryRows.map((record) => {
-                  const docs = getDocs(record.id);
-                  return (
-                    <div className="library-record" key={record.id}>
-                      <div className="library-record-head">
-                        <div>
-                          <strong>{record.id} · {record.text}</strong>
-                          <small>{record.standardTitle} · Punto {record.point}</small>
-                        </div>
-                        <div className="library-badges">
-                          <span className={`chip ${normalizeExistence(record.matrix) === 'existente' ? 'green' : 'neutral'}`}>{existenceLabel(record.matrix)}</span>
-                          <span className="chip blueish">{normalizeType(record.type)}</span>
-                          <span className={`chip ${STATUS_META[getStatus(record.id)].color}`}>{STATUS_META[getStatus(record.id)].name}</span>
-                        </div>
-                      </div>
-                      <div className="library-record-body">
-                        <div className="library-record-meta">
-                          <span><b>Responsable:</b> {fmt(record.responsible)}</span>
-                          <span><b>Gestor:</b> {fmt(record.manager)}</span>
-                        </div>
-                        {docs.length ? docs.map((doc) => (
-                          <div className="document-with-actions" key={doc.id}>
-                            <button className="document-row" onClick={() => void openPreview(doc)}>
-                              <div className="doc-icon"><FileText size={20} /></div>
-                              <span>
-                                <strong>{doc.file_name}</strong>
-                                <small>{doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')} · {formatBytes(doc.size_bytes)}</small>
-                              </span>
-                            </button>
-                            <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
-                            <button className="document-action" type="button" onClick={() => void openPreview(doc)} title="Vista previa" aria-label={`Vista previa de ${doc.file_name}`}><Eye size={16} /></button>
-                            <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
-                            <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento"><Trash2 size={16} /></button>
-                          </div>
-                        )) : (
-                          <div className="library-missing">Sin archivo cargado todavía. Este medio seguirá visible para su seguimiento.</div>
-                        )}
-                      </div>
+                <div className="library-table-head" aria-hidden="true">
+                  <span>Estándar / medio</span><span>Documento</span><span>Tipo</span><span>Estado</span><span>Acciones</span>
+                </div>
+                {visibleLibraryRows.map(({ doc, record, status }) => (
+                  <div className="library-document-row" key={doc.id}>
+                    <div className="library-standard-code"><strong>Estándar {record.standard}</strong><small>{record.id}</small></div>
+                    <button className="library-file-name" onClick={() => void openPreview(doc)} title="Abrir vista previa">
+                      <span className="doc-icon"><FileText size={19} /></span>
+                      <span><strong>{doc.file_name}</strong><small>{doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')}</small></span>
+                    </button>
+                    <div className="library-table-cell"><span className="chip blueish library-type">{normalizeType(record.type)}</span></div>
+                    <div className="library-table-cell"><span className={`chip ${STATUS_META[status].color} library-status`}>{STATUS_META[status].name}</span></div>
+                    <div className="library-actions">
+                      <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
+                      <button className="document-action" type="button" onClick={() => void openPreview(doc)} title="Vista previa" aria-label={`Vista previa de ${doc.file_name}`}><Eye size={16} /></button>
+                      <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
+                      <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento" aria-label={`Eliminar ${doc.file_name}`}><Trash2 size={16} /></button>
                     </div>
-                  );
-                })}
-                {!libraryRows.length && <div className="empty"><Library size={30} /><strong>No hay resultados</strong><span>Prueba con otro tipo documental o limpia los filtros.</span></div>}
+                  </div>
+                ))}
+                {!libraryRows.length && <div className="empty"><Library size={30} /><strong>No hay documentos que coincidan</strong><span>Prueba otros filtros o limpia la búsqueda.</span></div>}
+                {libraryRows.length > 0 && (
+                  <nav className="library-pagination" aria-label="Paginación de documentos">
+                    <span>Mostrando {Math.min(libraryRows.length, (Math.min(libraryPage, libraryPageCount) - 1) * LIBRARY_PAGE_SIZE + 1)}–{Math.min(libraryRows.length, Math.min(libraryPage, libraryPageCount) * LIBRARY_PAGE_SIZE)} de {libraryRows.length}</span>
+                    <div>
+                      <button type="button" className="library-page-button" disabled={libraryPage <= 1} onClick={() => setLibraryPage((page) => Math.max(1, page - 1))} aria-label="Página anterior"><ChevronLeft size={17} /> Anterior</button>
+                      <span className="library-page-count">Página {Math.min(libraryPage, libraryPageCount)} de {libraryPageCount}</span>
+                      <button type="button" className="library-page-button" disabled={libraryPage >= libraryPageCount} onClick={() => setLibraryPage((page) => Math.min(libraryPageCount, page + 1))} aria-label="Página siguiente">Siguiente <ChevronRight size={17} /></button>
+                    </div>
+                  </nav>
+                )}
               </div>
             </>
           )}
