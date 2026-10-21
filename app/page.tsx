@@ -165,15 +165,31 @@ export default function Home() {
   };
 
   useEffect(() => {
-    refresh();
     if (!sb) return;
+    let active = true;
+    const reload = () => {
+      if (active) void refresh();
+    };
+    reload();
     const channel = sb
       .channel('gestor-compartido')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'evidencias' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'seguimiento' }, refresh)
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'evidencias' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'seguimiento' }, reload)
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') reload();
+      });
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') reload();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', reload);
+    const fallback = window.setInterval(reload, 30000);
     return () => {
-      sb.removeChannel(channel);
+      active = false;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', reload);
+      window.clearInterval(fallback);
+      void sb.removeChannel(channel);
     };
   }, []);
 
