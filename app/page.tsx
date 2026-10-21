@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowLeft,
+  CircleAlert,
   BookOpen,
   CheckCircle2,
   ChevronRight,
@@ -13,7 +14,6 @@ import {
   FileText,
   Filter,
   Folder,
-  Info,
   Layers3,
   LayoutDashboard,
   Library,
@@ -50,6 +50,7 @@ type RecordItem = Item & {
 };
 type Status = 'pendiente' | 'en_proceso' | 'complementar' | 'completo';
 type Existence = 'existente' | 'no_existente' | 'por_verificar';
+type Notice = { message: string; kind: 'success' | 'error' };
 
 const standards = matrix as Standard[];
 const all: RecordItem[] = standards.flatMap((st) =>
@@ -145,7 +146,8 @@ export default function Home() {
   const [typeFilter, setTypeFilter] = useState('Todos');
   const [tracking, setTracking] = useState<Tracking[]>([]);
   const [documents, setDocuments] = useState<Evidence[]>([]);
-  const [alert, setAlert] = useState('');
+  const [alert, setAlert] = useState<Notice | null>(null);
+  const alertTimer = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploader, setUploader] = useState('');
@@ -157,15 +159,36 @@ export default function Home() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const previewRequest = useRef(0);
 
+  function dismissAlert() {
+    if (alertTimer.current !== null) {
+      window.clearTimeout(alertTimer.current);
+      alertTimer.current = null;
+    }
+    setAlert(null);
+  }
+
+  function showAlert(message: string, kind: Notice['kind'] = 'error') {
+    if (alertTimer.current !== null) window.clearTimeout(alertTimer.current);
+    setAlert({ message, kind });
+    alertTimer.current = window.setTimeout(() => {
+      setAlert(null);
+      alertTimer.current = null;
+    }, 5000);
+  }
+
+  useEffect(() => () => {
+    if (alertTimer.current !== null) window.clearTimeout(alertTimer.current);
+  }, []);
+
   const refresh = async () => {
     if (!sb) return;
     const [docsRes, trackingRes] = await Promise.all([
       sb.from('evidencias').select('*').order('created_at', { ascending: false }),
       sb.from('seguimiento').select('*'),
     ]);
-    if (docsRes.error) setAlert(`No se pudo consultar la biblioteca: ${docsRes.error.message}`);
+    if (docsRes.error) showAlert(`No se pudo consultar la biblioteca: ${docsRes.error.message}`);
     else setDocuments((docsRes.data || []) as Evidence[]);
-    if (trackingRes.error) setAlert(`No se pudo consultar el seguimiento: ${trackingRes.error.message}`);
+    if (trackingRes.error) showAlert(`No se pudo consultar el seguimiento: ${trackingRes.error.message}`);
     else setTracking((trackingRes.data || []) as Tracking[]);
   };
 
@@ -277,7 +300,7 @@ export default function Home() {
     setPoint(null);
     setSidebar(false);
     resetFilters();
-    setAlert('');
+    dismissAlert();
   }
 
   function openStd(id: number) {
@@ -298,7 +321,7 @@ export default function Home() {
     setFiles([]);
     setUploader('');
     setNotes('');
-    setAlert('');
+    dismissAlert();
   }
 
   async function saveStatus(status: Status) {
@@ -315,9 +338,9 @@ export default function Home() {
         },
         { onConflict: 'point_id' },
       );
-    if (error) setAlert(error.message);
+    if (error) showAlert(error.message);
     else {
-      setAlert('Estado guardado correctamente.');
+      showAlert('Estado guardado correctamente.', 'success');
       await refresh();
     }
     setBusy(false);
@@ -326,12 +349,12 @@ export default function Home() {
   async function upload() {
     if (!sb || !selected || !files.length) return;
     setBusy(true);
-    setAlert('');
+    dismissAlert();
     const whitelist = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
     for (const file of files) {
       const ext = (file.name.split('.').pop() || '').toLowerCase();
       if (!whitelist.includes(ext) || file.size > 15 * 1024 * 1024) {
-        setAlert(`Archivo no válido: ${file.name}. Admite PDF, Word, Excel e imágenes hasta 15 MB.`);
+        showAlert(`Archivo no válido: ${file.name}. Admite PDF, Word, Excel e imágenes hasta 15 MB.`);
         setBusy(false);
         return;
       }
@@ -346,7 +369,7 @@ export default function Home() {
         contentType: file.type || 'application/pdf',
       });
       if (uploadErr) {
-        setAlert(`Error al subir ${file.name}: ${uploadErr.message}`);
+        showAlert(`Error al subir ${file.name}: ${uploadErr.message}`);
         setBusy(false);
         return;
       }
@@ -361,7 +384,7 @@ export default function Home() {
       });
       if (dbErr) {
         await sb.storage.from('evidencias').remove([path]);
-        setAlert(`Error al registrar ${file.name}: ${dbErr.message}`);
+        showAlert(`Error al registrar ${file.name}: ${dbErr.message}`);
         setBusy(false);
         return;
       }
@@ -369,7 +392,7 @@ export default function Home() {
     setFiles([]);
     setUploader('');
     setNotes('');
-    setAlert('Documentos cargados correctamente.');
+    showAlert('Documentos cargados correctamente.', 'success');
     await refresh();
     setBusy(false);
   }
@@ -385,7 +408,7 @@ export default function Home() {
     if (error || !data?.signedUrl) {
       setPreviewDoc(null);
       setPreviewLoading(false);
-      setAlert(error?.message || 'No se pudo abrir el documento');
+      showAlert(error?.message || 'No se pudo abrir el documento');
       return;
     }
     setPreviewUrl(data.signedUrl);
@@ -405,7 +428,7 @@ export default function Home() {
       .from('evidencias')
       .createSignedUrl(doc.file_path, 180, { download: doc.file_name });
     if (error || !data?.signedUrl) {
-      setAlert(error?.message || 'No se pudo descargar el documento');
+      showAlert(error?.message || 'No se pudo descargar el documento');
       return;
     }
     const link = document.createElement('a');
@@ -420,7 +443,7 @@ export default function Home() {
   async function deleteDocument() {
     if (!deleteTarget || deleting) return;
     setDeleting(true);
-    setAlert('');
+    dismissAlert();
     try {
       const response = await fetch('/api/documents/delete', {
         method: 'POST',
@@ -430,10 +453,10 @@ export default function Home() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'No se pudo eliminar el documento');
       setDeleteTarget(null);
-      setAlert('Documento eliminado correctamente.');
+      showAlert('Documento eliminado correctamente.', 'success');
       await refresh();
     } catch (error) {
-      setAlert(error instanceof Error ? error.message : 'No se pudo eliminar el documento');
+      showAlert(error instanceof Error ? error.message : 'No se pudo eliminar el documento');
     } finally {
       setDeleting(false);
     }
@@ -515,12 +538,11 @@ export default function Home() {
 
         <div className="container page-modern">
           {alert && (
-            <div className={`banner ${busy ? '' : 'message'}`}>
-              <Info size={17} />
-              <span>{alert}</span>
-              <button onClick={() => setAlert('')} aria-label="Cerrar mensaje">
-                ×
-              </button>
+            <div className={`toast-notice ${alert.kind}`} role={alert.kind === 'error' ? 'alert' : 'status'} aria-live={alert.kind === 'error' ? 'assertive' : 'polite'}>
+              <span className="toast-icon">{alert.kind === 'success' ? <CheckCircle2 size={20} /> : <CircleAlert size={20} />}</span>
+              <span className="toast-message">{alert.message}</span>
+              <button type="button" onClick={dismissAlert} aria-label="Cerrar notificación">×</button>
+              <span className="toast-progress" aria-hidden="true" />
             </div>
           )}
 

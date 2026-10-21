@@ -160,3 +160,19 @@
 .preview-actions{display:flex;justify-content:flex-end;gap:10px;padding:16px 24px}
 .preview-actions .confirm-delete{display:inline-flex;align-items:center;gap:7px}
 @media(max-width:600px){.preview-header{padding:16px}.preview-actions{padding:14px 16px}.preview-content{min-height:220px}.document-action{flex-basis:34px;width:34px;height:34px}.document-with-actions{flex-wrap:wrap}.document-with-actions .document-row{flex:1 0 100%}.document-with-actions>.tiny-button{margin-left:auto}}
+.toast-notice{position:fixed;top:88px;right:24px;z-index:300;display:flex;align-items:center;gap:12px;width:min(440px,calc(100vw - 32px));min-height:66px;padding:15px 42px 17px 16px;overflow:hidden;border:1px solid #dce8e6;border-radius:14px;background:#fff;color:#263c50;box-shadow:0 16px 44px #17334a24;animation:toast-enter .28s ease-out both}
+.toast-notice.success{border-color:#c9e9d8}
+.toast-notice.error{border-color:#f0d2cf}
+.toast-icon{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:12px;background:#e8f7ee;color:#248357}
+.toast-notice.error .toast-icon{background:#fff0ed;color:#bd5147}
+.toast-message{font-size:13px;font-weight:600;line-height:1.45;overflow-wrap:anywhere}
+.toast-notice>button{position:absolute;top:10px;right:11px;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#7d8a96;font-size:22px;line-height:1}
+.toast-notice>button:hover{background:#f1f4f6;color:#30465a}
+.toast-progress{position:absolute;right:0;bottom:0;left:0;height:3px;background:#e7f2eb;transform-origin:left;animation:toast-countdown 5s linear both}
+.toast-notice.error .toast-progress{background:#f7e8e6}
+.toast-notice.success .toast-progress:after,.toast-notice.error .toast-progress:after{display:block;width:100%;height:100%;content:'';background:#3ba875}
+.toast-notice.error .toast-progress:after{background:#d66a5f}
+@keyframes toast-enter{from{opacity:0;transform:translateY(-10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toast-countdown{to{transform:scaleX(0)}}
+@media(max-width:600px){.toast-notice{top:76px;right:12px;width:calc(100vw - 24px)}}
+@media(prefers-reduced-motion:reduce){.toast-notice{animation:none}.toast-progress{animation:none;transform:scaleX(0)}}
