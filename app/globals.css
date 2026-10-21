@@ -97,6 +97,7 @@
 .toolbar-extended{max-width:none;display:grid;grid-template-columns:minmax(250px,1fr) repeat(3,minmax(180px,.32fr));gap:12px}
 .item-row-rich{justify-content:space-between;gap:12px}.item-main{display:flex;align-items:center;gap:15px;border:0;background:none;text-align:left;flex:1;min-width:0;padding:0;color:inherit}.item-main .item-summary{flex:1}
 .upload-card-top{border:1px solid #cfe3ef;background:linear-gradient(180deg,#fbfdff,#f7fbff)}
+.upload-connection-warning{padding:11px 13px;border:1px solid #f2d7a4;border-radius:9px;background:#fff8e8;color:#805d19;font-size:12px;line-height:1.5}
 .upload-grid-fields{display:grid;grid-template-columns:220px minmax(0,1fr);gap:14px}
 .library-summary-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 14px}.filter-pill{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;background:#eef4f8;color:#587086;font-size:12px;font-weight:700}.filter-pill.active{background:#e5f2ff;color:#0d6da7}
 .library-record{border-top:1px solid #edf1f4;padding:20px 0}.library-record:first-of-type{border-top:0;padding-top:10px}.library-record-head{display:flex;justify-content:space-between;gap:15px;align-items:flex-start}.library-record-head strong{display:block;font-size:14px;line-height:1.55;color:#1f3d5a}.library-record-head small{display:block;margin-top:4px;color:#7e91a3}.library-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.library-record-body{margin-top:14px}.library-record-meta{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:#72889a;margin-bottom:10px}.library-missing{padding:14px 16px;border:1px dashed #c9d8e3;background:#f9fbfd;border-radius:12px;font-size:12px;color:#6f8397}
@@ -145,3 +146,17 @@
 @media(max-width:1380px){.home-main .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.progress-overview-body{grid-template-columns:1fr}}
 @media(max-width:1120px){.home-layout{grid-template-columns:1fr}.home-side{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:740px){.page-modern{padding:18px 14px 60px}.page-hero.with-photo{padding:19px 16px;min-height:150px}.page-hero.with-photo:before{inset:0 0 0 15%}.page-hero.with-photo:after{background:linear-gradient(90deg,rgba(248,251,254,.98),rgba(248,251,254,.78))}.page-hero.with-photo h1{font-size:25px}.home-main .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metrics-modern .metric{height:auto;min-height:103px;padding:10px;gap:8px}.metric-icon{width:33px;height:33px;flex-basis:33px}.metric-icon svg{width:19px}.metric-number{font-size:25px}.metric-arrow{display:none}.progress-overview-body{grid-template-columns:1fr}.progress-counters{grid-template-columns:repeat(2,1fr)}.home-side{grid-template-columns:1fr}}
+.document-action{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border:1px solid #e3eaf0;border-radius:9px;background:#fff;color:#56798a}
+.document-action:hover{background:#edf7f8;border-color:#bfdee2;color:#14778e}
+.preview-overlay{z-index:210}
+.preview-dialog{width:min(900px,calc(100vw - 32px));max-height:calc(100vh - 32px);display:flex;flex-direction:column;overflow:hidden;border:1px solid #e5ebf0;border-radius:14px;background:#fff;box-shadow:0 24px 80px #102a4033}
+.preview-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid #e8edf1}
+.preview-header h2{max-width:740px;margin:6px 0 0;overflow-wrap:anywhere;font:700 16px/1.4 var(--display)}
+.preview-close{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border:1px solid #e3eaf0;border-radius:9px;background:#fff;color:#56798a}
+.preview-content{display:grid;place-items:center;min-height:280px;max-height:calc(100vh - 180px);overflow:auto;background:#f1f4f7}
+.preview-content iframe{display:block;width:100%;height:min(68vh,760px);border:0;background:#fff}
+.preview-content img{display:block;max-width:100%;max-height:68vh;object-fit:contain}
+.preview-message{padding:32px;color:#718093;text-align:center;font-size:13px}
+.preview-actions{display:flex;justify-content:flex-end;gap:10px;padding:16px 24px}
+.preview-actions .confirm-delete{display:inline-flex;align-items:center;gap:7px}
+@media(max-width:600px){.preview-header{padding:16px}.preview-actions{padding:14px 16px}.preview-content{min-height:220px}.document-action{flex-basis:34px;width:34px;height:34px}.document-with-actions{flex-wrap:wrap}.document-with-actions .document-row{flex:1 0 100%}.document-with-actions>.tiny-button{margin-left:auto}}

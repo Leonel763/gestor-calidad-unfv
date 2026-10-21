@@ -31,6 +31,8 @@ La eliminación usa una ruta privada del servidor y solicita la contraseña del 
 
 ## En local
 
+Antes de iniciar la aplicación, copia `.env.example` a `.env.local` para configurar la conexión con Supabase. Sin estas variables, la carga y consulta de documentos estarán deshabilitadas. Reinicia el servidor después de cambiar variables de entorno.
+
 ```bash
 npm install
 npm run dev

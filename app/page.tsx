@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowLeft,
   BookOpen,
@@ -8,7 +8,8 @@ import {
   ChevronRight,
   ClipboardList,
   Cloud,
-  ExternalLink,
+  Download,
+  Eye,
   FileText,
   Filter,
   Folder,
@@ -151,6 +152,10 @@ export default function Home() {
   const [notes, setNotes] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Evidence | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<Evidence | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewRequest = useRef(0);
 
   const refresh = async () => {
     if (!sb) return;
@@ -369,14 +374,47 @@ export default function Home() {
     setBusy(false);
   }
 
-  async function openDoc(doc: Evidence) {
+  async function openPreview(doc: Evidence) {
     if (!sb) return;
+    const requestId = ++previewRequest.current;
+    setPreviewDoc(doc);
+    setPreviewUrl(null);
+    setPreviewLoading(true);
     const { data, error } = await sb.storage.from('evidencias').createSignedUrl(doc.file_path, 180);
+    if (requestId !== previewRequest.current) return;
     if (error || !data?.signedUrl) {
+      setPreviewDoc(null);
+      setPreviewLoading(false);
       setAlert(error?.message || 'No se pudo abrir el documento');
       return;
     }
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    setPreviewUrl(data.signedUrl);
+    setPreviewLoading(false);
+  }
+
+  function closePreview() {
+    previewRequest.current += 1;
+    setPreviewDoc(null);
+    setPreviewUrl(null);
+    setPreviewLoading(false);
+  }
+
+  async function downloadDoc(doc: Evidence) {
+    if (!sb) return;
+    const { data, error } = await sb.storage
+      .from('evidencias')
+      .createSignedUrl(doc.file_path, 180, { download: doc.file_name });
+    if (error || !data?.signedUrl) {
+      setAlert(error?.message || 'No se pudo descargar el documento');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = data.signedUrl;
+    link.download = doc.file_name;
+    link.rel = 'noopener';
+    document.body.append(link);
+    link.click();
+    link.remove();
   }
 
   async function deleteDocument() {
@@ -688,6 +726,7 @@ export default function Home() {
                       <span className="soft-count">Medio {selected.id}</span>
                     </div>
                     <p className="muted">Adjunta aquí el archivo principal o sus anexos. La carga es visible para todos los colaboradores.</p>
+                    {!sb && <p className="upload-connection-warning" role="status">La carga está deshabilitada porque no se ha configurado la conexión con Supabase. Configura las variables de entorno y reinicia la aplicación.</p>}
                     <label className={`dropzone ${sb ? '' : 'disabled'}`}>
                       <Upload size={27} />
                       <strong>{files.length ? files.map((f) => f.name).join(', ') : 'Seleccionar documentos'}</strong>
@@ -733,15 +772,16 @@ export default function Home() {
                     {getDocs(selected.id).length ? (
                       getDocs(selected.id).map((doc) => (
                         <div className="document-with-actions" key={doc.id}>
-                          <button className="document-row" onClick={() => openDoc(doc)}>
+                          <button className="document-row" onClick={() => void openPreview(doc)}>
                             <div className="doc-icon"><FileText size={20} /></div>
                             <span>
                               <strong>{doc.file_name}</strong>
                               <small>{doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')} · {formatBytes(doc.size_bytes)}</small>
                               {doc.notes && <small>{doc.notes}</small>}
                             </span>
-                            <ExternalLink size={16} />
                           </button>
+                          <button className="document-action" type="button" onClick={() => void openPreview(doc)} title="Vista previa" aria-label={`Vista previa de ${doc.file_name}`}><Eye size={16} /></button>
+                          <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
                           <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento"><Trash2 size={16} /></button>
                         </div>
                       ))
@@ -811,15 +851,16 @@ export default function Home() {
                         </div>
                         {docs.length ? docs.map((doc) => (
                           <div className="document-with-actions" key={doc.id}>
-                            <button className="document-row" onClick={() => openDoc(doc)}>
+                            <button className="document-row" onClick={() => void openPreview(doc)}>
                               <div className="doc-icon"><FileText size={20} /></div>
                               <span>
                                 <strong>{doc.file_name}</strong>
                                 <small>{doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')} · {formatBytes(doc.size_bytes)}</small>
                               </span>
-                              <ExternalLink size={16} />
                             </button>
                             <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
+                            <button className="document-action" type="button" onClick={() => void openPreview(doc)} title="Vista previa" aria-label={`Vista previa de ${doc.file_name}`}><Eye size={16} /></button>
+                            <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
                             <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento"><Trash2 size={16} /></button>
                           </div>
                         )) : (
@@ -859,6 +900,35 @@ export default function Home() {
         </div>
       </div>
 
+      {previewDoc && (
+        <div className="modal-overlay preview-overlay" onMouseDown={(e) => { if (e.currentTarget === e.target) closePreview(); }} role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="preview-title" className="preview-dialog">
+            <header className="preview-header">
+              <div>
+                <span className="eyebrow">VISTA PREVIA</span>
+                <h2 id="preview-title">{previewDoc.file_name}</h2>
+              </div>
+              <button type="button" className="preview-close" onClick={closePreview} aria-label="Cerrar vista previa"><X size={20} /></button>
+            </header>
+            <div className="preview-content">
+              {previewLoading ? (
+                <p className="preview-message">Cargando vista previa...</p>
+              ) : previewUrl && (previewDoc.mime_type === 'application/pdf' || previewDoc.file_name.toLowerCase().endsWith('.pdf')) ? (
+                <iframe title={`Vista previa de ${previewDoc.file_name}`} src={previewUrl} />
+              ) : previewUrl && (previewDoc.mime_type.startsWith('image/') || /\.(png|jpe?g)$/i.test(previewDoc.file_name)) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={previewUrl} alt={`Vista previa de ${previewDoc.file_name}`} />
+              ) : (
+                <p className="preview-message">Este formato no admite vista previa en el navegador. Descarga el archivo para abrirlo.</p>
+              )}
+            </div>
+            <div className="preview-actions">
+              <button type="button" className="cancel-delete" onClick={closePreview}>Cerrar</button>
+              <button type="button" className="confirm-delete" onClick={() => void downloadDoc(previewDoc)}><Download size={16} /> Descargar</button>
+            </div>
+          </section>
+        </div>
+      )}
       {deleteTarget && (
         <div className="modal-overlay" onMouseDown={(e) => { if (e.currentTarget === e.target && !deleting) setDeleteTarget(null); }} role="presentation">
           <section role="dialog" aria-modal="true" aria-labelledby="delete-title" className="delete-dialog">
