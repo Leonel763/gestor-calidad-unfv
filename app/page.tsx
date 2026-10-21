@@ -154,6 +154,7 @@ export default function Home() {
   const alertTimer = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<Exclude<Status, 'pendiente'> | ''>('');
   const [uploader, setUploader] = useState('');
   const [notes, setNotes] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Evidence | null>(null);
@@ -225,7 +226,17 @@ export default function Home() {
     };
   }, []);
 
-  const getStatus = (id: string): Status => tracking.find((t) => t.point_id === id)?.status || 'pendiente';
+  const getStatus = (id: string): Status => {
+  const tieneDocumentos = documents.some(
+    (doc) => doc.point_id === id
+  );
+
+  if (!tieneDocumentos) {
+    return 'pendiente';
+  }
+
+  return tracking.find((t) => t.point_id === id)?.status || 'pendiente';
+};
   const getDocs = (id: string) => documents.filter((d) => d.point_id === id);
 
   const complete = all.filter((a) => getStatus(a.id) === 'completo').length;
@@ -341,35 +352,26 @@ export default function Home() {
     setPoint(record.point);
     setItem(record.id);
     setFiles([]);
+    setUploadStatus('');
     setUploader('');
     setNotes('');
     dismissAlert();
   }
 
-  async function saveStatus(status: Status) {
-    if (!sb || !selected) return;
-    setBusy(true);
-    const { error } = await sb
-      .from('seguimiento')
-      .upsert(
-        {
-          point_id: selected.id,
-          status,
-          notes: '',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'point_id' },
-      );
-    if (error) showAlert(error.message);
-    else {
-      showAlert('Estado guardado correctamente.', 'success');
-      await refresh();
-    }
-    setBusy(false);
-  }
+
 
   async function upload() {
-    if (!sb || !selected || !files.length) return;
+  if (!sb || !selected || busy) return;
+
+  if (!uploadStatus) {
+    showAlert('Debes seleccionar el estado del medio.');
+    return;
+  }
+
+  if (!files.length && getDocs(selected.id).length === 0) {
+    showAlert('Debes adjuntar al menos un documento.');
+    return;
+  }
     setBusy(true);
     dismissAlert();
     const whitelist = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
@@ -411,12 +413,39 @@ export default function Home() {
         return;
       }
     }
-    setFiles([]);
-    setUploader('');
-    setNotes('');
-    showAlert('Documentos cargados correctamente.', 'success');
-    await refresh();
-    setBusy(false);
+    const { error: statusError } = await sb
+  .from('seguimiento')
+  .upsert(
+    {
+      point_id: selected.id,
+      status: uploadStatus,
+      notes: '',
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'point_id' }
+  );
+
+if (statusError) {
+  showAlert(
+    `No se pudo guardar el estado: ${statusError.message}`
+  );
+  await refresh();
+  setBusy(false);
+  return;
+}
+
+setFiles([]);
+setUploader('');
+setNotes('');
+setUploadStatus('');
+
+showAlert(
+  'Documentos y estado guardados correctamente.',
+  'success'
+);
+
+await refresh();
+setBusy(false);
   }
 
   async function openPreview(doc: Evidence) {
@@ -758,99 +787,314 @@ export default function Home() {
             </>
           )}
 
-          {selected && (
-            <>
-              <button className="back" onClick={() => setItem(null)}><ArrowLeft size={17} /> Estándar {selected.standard} · Punto {selected.point}</button>
-              <div className="details">
-                <div className="detail-left">
-                  <div className="detail-card upload-card-top">
-                    <div className="section-inline">
-                      <h2><Upload size={20} /> Subir documento</h2>
-                      <span className="soft-count">Medio {selected.id}</span>
-                    </div>
-                    <p className="muted">Adjunta aquí el archivo principal o sus anexos. La carga es visible para todos los colaboradores.</p>
-                    {!sb && <p className="upload-connection-warning" role="status">La carga está deshabilitada porque no se ha configurado la conexión con Supabase. Configura las variables de entorno y reinicia la aplicación.</p>}
-                    <label className={`dropzone ${sb ? '' : 'disabled'}`}>
-                      <Upload size={27} />
-                      <strong>{files.length ? files.map((f) => f.name).join(', ') : 'Seleccionar documentos'}</strong>
-                      <span>PDF, Word, Excel o imágenes · Hasta 15 MB por archivo</span>
-                      <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" disabled={!sb || busy} onChange={(e) => setFiles(Array.from(e.target.files || []))} />
-                    </label>
-                    <div className="upload-grid-fields">
-                      <div className="field"><label htmlFor="uploader">Colaborador</label><input id="uploader" value={uploader} onChange={(e) => setUploader(e.target.value)} placeholder="Opcional" /></div>
-                      <div className="field"><label htmlFor="notes">Observación</label><textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Información complementaria" /></div>
-                    </div>
-                    <button className="primary-button" disabled={!sb || !files.length || busy} onClick={upload}>{busy ? 'Guardando...' : 'Guardar documentos'}</button>
-                  </div>
+          
+{selected && (
+  <section className="evidence-page">
 
-                  <div className="detail-card">
-                    <div className="eyebrow">REQUISITO DOCUMENTAL</div>
-                    <h2>{selected.text || selected.criterion}</h2>
-                    <div className="tags">
-                      <span>{normalizeType(selected.type)}</span>
-                      <span>{existenceLabel(selected.matrix)}</span>
-                      <span>E{selected.standard}</span>
-                      <span>Punto {selected.point}</span>
-                    </div>
-                    <div className="rule" />
-                    <h3>Criterio de evaluación</h3>
-                    <p>{fmt(selected.criterion)}</p>
-                    <h3>Información de la matriz</h3>
-                    <dl className="metadata">
-                      <dt>Existencia declarada</dt><dd><b>{fmt(selected.matrix)}</b></dd>
-                      <dt>Tipo documental</dt><dd>{normalizeType(selected.type)}</dd>
-                      <dt>Alcance</dt><dd>{fmt(selected.scope)}</dd>
-                      <dt>Dependencia responsable</dt><dd>{fmt(selected.responsible)}</dd>
-                      <dt>Gestor responsable</dt><dd>{fmt(selected.manager)}</dd>
-                    </dl>
-                    {selected.gap && <><h3>Brecha registrada</h3><p>{selected.gap}</p></>}
-                    {selected.action && <><h3>Acción prevista</h3><p>{selected.action}</p></>}
-                  </div>
+    {/* ENCABEZADO DEL PUNTO */}
+    <div className="evidence-heading">
+      <button
+        className="back"
+        onClick={() => setItem(null)}
+      >
+        <ArrowLeft size={16} />
+        Estándar {selected.standard} / Punto {selected.id}
+      </button>
 
-                  <div className="detail-card">
-                    <div className="section-inline">
-                      <h2><Paperclip size={20} /> Documentos adjuntos</h2>
-                      <span className="soft-count">{getDocs(selected.id).length} archivo(s)</span>
-                    </div>
-                    {getDocs(selected.id).length ? (
-                      getDocs(selected.id).map((doc) => (
-                        <div className="document-with-actions" key={doc.id}>
-                          <button className="document-row" onClick={() => void openPreview(doc)}>
-                            <div className="doc-icon"><FileText size={20} /></div>
-                            <span>
-                              <strong>{doc.file_name}</strong>
-                              <small>{doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')} · {formatBytes(doc.size_bytes)}</small>
-                              {doc.notes && <small>{doc.notes}</small>}
-                            </span>
-                          </button>
-                          <button className="document-action" type="button" onClick={() => void openPreview(doc)} title="Vista previa" aria-label={`Vista previa de ${doc.file_name}`}><Eye size={16} /></button>
-                          <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
-                          <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento"><Trash2 size={16} /></button>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="empty"><FileText size={28} /><strong>Aún no hay documentos cargados</strong><span>Los archivos añadidos aparecerán aquí para todos los colaboradores.</span></div>
-                    )}
-                  </div>
-                </div>
-                <aside className="detail-right">
-                  <div className="detail-card">
-                    <div className="eyebrow">SEGUIMIENTO</div>
-                    <h2>Estado del medio</h2>
-                    <p className="muted">El avance es distinto de la existencia indicada en la matriz.</p>
-                    <select className="status-select" disabled={!sb || busy} value={getStatus(selected.id)} onChange={(e) => saveStatus(e.target.value as Status)}>
-                      {Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}
-                    </select>
-                    <span className="tiny-note"><CheckCircle2 size={15} /> {sb ? 'Cambios compartidos' : 'Activar conexión para editar'}</span>
-                  </div>
-                  <div className="detail-card">
-                    <h3>Ruta documental</h3>
-                    <div className="path-list"><span>Estándar {selected.standard}</span><ChevronRight size={15} /><span>{selected.point}</span><ChevronRight size={15} /><b>{selected.id}</b></div>
-                  </div>
-                </aside>
+      <h1>Punto {selected.id}</h1>
+      <p>{selected.text || selected.criterion}</p>
+    </div>
+
+    {/* CARGA Y ESTADO */}
+    <div className="evidence-top-grid">
+
+      <div className="evidence-card evidence-upload" id="carga-evidencia">
+        <div className="evidence-card-title">
+          <Upload size={20} />
+          <h2>Subir documento</h2>
+          <span>Medio {selected.id}</span>
+        </div>
+
+        {!sb && (
+          <p className="upload-connection-warning">
+            No se ha configurado la conexión con Supabase.
+          </p>
+        )}
+
+        <label
+          className="evidence-dropzone"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (!sb || busy) return;
+            setFiles(Array.from(e.dataTransfer.files));
+          }}
+        >
+          <Upload size={24} />
+          <div>
+            <strong>
+              {files.length
+                ? files.map(f => f.name).join(', ')
+                : 'Arrastra archivos o selecciónalos'}
+            </strong>
+            <small>PDF, Word, Excel o imágenes · Máximo 15 MB</small>
+          </div>
+          <span className="evidence-select-file">
+            Seleccionar archivos
+          </span>
+
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+            disabled={!sb || busy}
+            onChange={(e) =>
+              setFiles(Array.from(e.target.files || []))
+            }
+          />
+        </label>
+
+        <div className="evidence-form-grid">
+          <div className="evidence-field">
+            <label htmlFor="evidence-uploader">
+              Colaborador <small>(opcional)</small>
+            </label>
+            <input
+              id="evidence-uploader"
+              value={uploader}
+              onChange={(e) => setUploader(e.target.value)}
+              placeholder="Nombre o área"
+            />
+          </div>
+
+          <div className="evidence-field">
+            <label htmlFor="evidence-notes">
+              Observación <small>(opcional)</small>
+            </label>
+            <textarea
+              id="evidence-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Información complementaria"
+              rows={2}
+            />
+          </div>
+        </div>
+
+        <div className="evidence-form-footer">
+          <div className="evidence-field">
+            <label htmlFor="evidence-status">
+              Estado del medio <b>*</b>
+            </label>
+
+            <select
+              id="evidence-status"
+              value={uploadStatus}
+              disabled={
+                !sb ||
+                busy ||
+                (!files.length &&
+                  getDocs(selected.id).length === 0)
+              }
+              onChange={(e) =>
+                setUploadStatus(
+                  e.target.value as
+                    Exclude<Status, 'pendiente'> | ''
+                )
+              }
+            >
+              <option value="">Selecciona un estado...</option>
+              <option value="completo">Completo</option>
+              <option value="complementar">
+                Por complementar
+              </option>
+              <option value="en_proceso">
+                Completo, pero con datos simulados
+              </option>
+            </select>
+          </div>
+
+          <button
+            className="primary-button"
+            disabled={
+              !sb ||
+              busy ||
+              !uploadStatus ||
+              (!files.length &&
+                getDocs(selected.id).length === 0)
+            }
+            onClick={upload}
+          >
+            {busy
+              ? 'Guardando...'
+              : files.length
+                ? 'Guardar documento y estado'
+                : 'Guardar estado'}
+          </button>
+        </div>
+      </div>
+
+      {/* ESTADO ACTUAL */}
+      <aside className="evidence-card evidence-status-card">
+        <span>Estado:</span>
+        <strong className={`evidence-state state-${getStatus(selected.id)}`}>
+          {STATUS_META[getStatus(selected.id)].name}
+        </strong>
+      </aside>
+    </div>
+
+    {/* DOCUMENTOS ADJUNTOS */}
+    <div className="evidence-card evidence-documents">
+      <div className="evidence-documents-heading">
+        <div>
+          <h2>
+            <Paperclip size={20} />
+            Documentos adjuntos
+          </h2>
+          <small>{getDocs(selected.id).length} archivo(s)</small>
+        </div>
+
+        <button
+          type="button"
+          className="evidence-add-button"
+          onClick={() =>
+            document.getElementById('carga-evidencia')
+              ?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+              })
+          }
+        >
+          + Agregar documento
+        </button>
+      </div>
+
+      {getDocs(selected.id).length > 0 ? (
+        <>
+          <div className="evidence-table-header">
+            <span>Archivo</span>
+            <span>Fecha</span>
+            <span>Colaborador</span>
+            <span>Acciones</span>
+          </div>
+
+          {getDocs(selected.id).map((doc) => (
+            <div className="evidence-table-row" key={doc.id}>
+              <button
+                type="button"
+                className="evidence-file-name"
+                onClick={() => void openPreview(doc)}
+              >
+                <FileText size={22} />
+                <span>
+                  <strong>{doc.file_name}</strong>
+                  <small>{formatBytes(doc.size_bytes)}</small>
+                </span>
+              </button>
+
+              <span className="evidence-cell">
+                {new Date(doc.created_at)
+                  .toLocaleDateString('es-PE')}
+              </span>
+
+              <span className="evidence-cell">
+                {doc.uploader}
+              </span>
+
+              <div className="evidence-actions">
+                <button
+                  type="button"
+                  title="Vista previa"
+                  aria-label={`Vista previa de ${doc.file_name}`}
+                  onClick={() => void openPreview(doc)}
+                >
+                  <Eye size={17} />
+                </button>
+
+                <button
+                  type="button"
+                  title="Descargar"
+                  aria-label={`Descargar ${doc.file_name}`}
+                  onClick={() => void downloadDoc(doc)}
+                >
+                  <Download size={17} />
+                </button>
+
+                <button
+                  type="button"
+                  title="Eliminar"
+                  aria-label={`Eliminar ${doc.file_name}`}
+                  onClick={() => setDeleteTarget(doc)}
+                >
+                  <Trash2 size={17} />
+                </button>
               </div>
-            </>
-          )}
+            </div>
+          ))}
+        </>
+      ) : (
+        <div className="evidence-empty">
+          <FileText size={25} />
+          <strong>Aún no hay documentos adjuntos</strong>
+          <small>Sube el primer documento para registrar una evidencia.</small>
+        </div>
+      )}
+    </div>
+
+    {/* REQUISITO DOCUMENTAL PLEGABLE */}
+    <details className="evidence-card evidence-requirement">
+      
+        <summary>
+          <FileText size={20} />
+
+          <strong>Detalle del registro documental</strong>
+
+          <ChevronRight
+            size={18}
+            className="evidence-chevron"
+          />
+        </summary>
+
+
+      <div className="evidence-requirement-body">
+        <h3>Criterio de evaluación</h3>
+        <p>{fmt(selected.criterion)}</p>
+
+        <h3>Información de la matriz</h3>
+        <dl className="metadata">
+          <dt>Existencia declarada</dt>
+          <dd>{fmt(selected.matrix)}</dd>
+
+          <dt>Tipo documental</dt>
+          <dd>{normalizeType(selected.type)}</dd>
+
+          <dt>Alcance</dt>
+          <dd>{fmt(selected.scope)}</dd>
+
+          <dt>Dependencia responsable</dt>
+          <dd>{fmt(selected.responsible)}</dd>
+
+          <dt>Gestor responsable</dt>
+          <dd>{fmt(selected.manager)}</dd>
+        </dl>
+
+        {selected.gap && (
+          <>
+            <h3>Brecha registrada</h3>
+            <p>{selected.gap}</p>
+          </>
+        )}
+
+        {selected.action && (
+          <>
+            <h3>Acción prevista</h3>
+            <p>{selected.action}</p>
+          </>
+        )}
+      </div>
+    </details>
+  </section>
+)}
 
           {section === 'biblioteca' && !selected && (
             <>
