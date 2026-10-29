@@ -139,7 +139,7 @@ export default function Home() {
   const sb = client();
   const [section, setSection] = useState<'inicio' | 'estandares' | 'biblioteca' | 'pendientes'>('inicio');
   const [standard, setStandard] = useState<number>(1);
-  const [point, setPoint] = useState<string | null>(null);
+  const [point, setPoint] = useState<string | null>('1.1');
   const [item, setItem] = useState<string | null>(null);
   const [sidebar, setSidebar] = useState(false);
   const [query, setQuery] = useState('');
@@ -280,7 +280,6 @@ export default function Home() {
   const visiblePoints = selectedStandard.points
     .map((pt) => ({ ...pt, visibleItems: pt.items.filter((it) => filteredIds.has(it.id)) }))
     .filter((pt) => pt.visibleItems.length > 0);
-  const focusedPoint = visiblePoints.find((pt) => pt.id === point) || visiblePoints[0] || null;
 
   const libraryRows = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -342,7 +341,7 @@ export default function Home() {
     setSection(next);
     setQuickUpload(false);
     setItem(null);
-    setPoint(null);
+    setPoint(next === 'estandares' ? standards.find((st) => st.id === standard)?.points[0]?.id || null : null);
     setSidebar(false);
     resetFilters();
     dismissAlert();
@@ -352,7 +351,7 @@ export default function Home() {
     setQuickMedium('');
     setStandard(id);
     setSection('estandares');
-    setPoint(null);
+    setPoint(standards.find((st) => st.id === id)?.points[0]?.id || null);
     setItem(null);
     setSidebar(false);
   }
@@ -621,7 +620,7 @@ setBusy(false);
             </div>
           )}
 
-          {!selected && (
+          {!selected && section !== 'estandares' && (
             <div className="page-heading page-hero with-photo">
               <div>
                 <div className="eyebrow">
@@ -779,29 +778,60 @@ setBusy(false);
                 </section>
               )}
 
-              <div className="standards-workspace">
-                <aside className="standards-navigator" aria-label="Navegación de estándares y puntos">
-                  <div className="standards-navigator-heading">
-                    <span className="standards-kicker">NAVEGACIÓN RÁPIDA</span>
-                    <h2>Explorar estándares</h2>
-                    <p>Selecciona un estándar y luego el punto que necesitas.</p>
-                  </div>
-                  <label htmlFor="compact-standard-select" className="compact-select-label">Estándar</label>
-                  <select id="compact-standard-select" className="compact-standard-select"
-                    value={standard} onChange={(e) => openStd(Number(e.target.value))}>
+
+              <div className="quiet-page-title">
+                <div>
+                  <span className="quiet-eyebrow">GESTIÓN DE CALIDAD · FACULTAD DE DERECHO</span>
+                  <h1>Explorador de estándares</h1>
+                  <p>Consulta los puntos de evaluación y sus evidencias de manera sencilla.</p>
+                </div>
+                <span className="quiet-count">{standards.length} estándares</span>
+              </div>
+              <div className="quiet-workspace">
+                <aside className="quiet-sidebar" aria-label="Seleccionar estándar">
+                  <header className="quiet-sidebar-header">
+                    <h2>Estándares</h2>
+                    <span>{standards.length} disponibles</span>
+                  </header>
+                  <div className="quiet-standard-list">
                     {standards.map((st) => (
-                      <option key={st.id} value={st.id}>{'E' + st.id + ' — ' + st.title}</option>
+                      <button type="button" key={st.id}
+                        className={standard === st.id ? 'quiet-standard-item is-current' : 'quiet-standard-item'}
+                        onClick={() => openStd(st.id)}
+                        aria-current={standard === st.id ? 'page' : undefined}>
+                        <span className="quiet-standard-code">{st.id}</span>
+                        <span className="quiet-standard-copy">
+                          <strong>{st.title}</strong>
+                          <small>{st.points.length} puntos</small>
+                        </span>
+                        <ChevronRight size={15} aria-hidden="true"/>
+                      </button>
                     ))}
-                  </select>
-                  <div className="compact-navigation-tools">
-                    <label className="compact-search">
-                      <Search size={15} aria-hidden="true" />
-                      <input value={query} onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Buscar puntos o medios" aria-label="Buscar puntos o medios" />
-                    </label>
-                    <details className="compact-filters">
-                      <summary><Filter size={15}/> Filtrar resultados</summary>
-                      <div className="compact-filter-fields">
+                  </div>
+                </aside>
+                <section className="quiet-content" aria-label="Puntos de evaluación">
+                  <header className="quiet-standard-header">
+                    <div className="quiet-standard-symbol">{'E' + selectedStandard.id}</div>
+                    <div className="quiet-standard-heading">
+                      <span className="quiet-eyebrow">ESTÁNDAR {selectedStandard.id}</span>
+                      <h2>{selectedStandard.title}</h2>
+                      <p>{selectedStandard.points.length} puntos de evaluación <span aria-hidden="true">·</span> {selectedStandard.points.flatMap((pt) => pt.items).length} medios de logro</p>
+                    </div>
+                    <button className="quiet-add-evidence" type="button" onClick={startQuickUpload}>
+                      <Upload size={16}/> Registrar evidencia
+                    </button>
+                  </header>
+                  <div className="quiet-points-header">
+                    <div>
+                      <h3>Puntos de evaluación</h3>
+                      <p>Selecciona un punto para consultar los medios y documentos.</p>
+                    </div>
+                    <details className="quiet-search-filters">
+                      <summary><Filter size={15}/> Buscar y filtrar</summary>
+                      <div className="quiet-filter-panel">
+                        <label>Buscar
+                          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Código, medio o documento"/>
+                        </label>
                         <label>Estado
                           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}>
                             <option value="todos">Todos los estados</option>
@@ -813,111 +843,78 @@ setBusy(false);
                             {EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                           </select>
                         </label>
-                        <label>Tipo
+                        <label>Tipo documental
                           <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
                             {TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                           </select>
                         </label>
-                        <button type="button" className="compact-clear" onClick={resetFilters}>Limpiar filtros</button>
+                        <button type="button" onClick={resetFilters}>Limpiar filtros</button>
                       </div>
                     </details>
                   </div>
-                  <div className="compact-nav-list">
-                    <div className="compact-nav-list-head">
-                      <span>Puntos del estándar</span>
-                      <span>{visiblePoints.length} de {selectedStandard.points.length}</span>
-                    </div>
-                    {visiblePoints.length ? visiblePoints.map((pt) => (
-                      <button type="button" key={pt.id}
-                        className={focusedPoint?.id === pt.id ? 'compact-point-link is-active' : 'compact-point-link'}
-                        onClick={() => setPoint(pt.id)}
-                        aria-current={focusedPoint?.id === pt.id ? 'true' : undefined}>
-                        <span className="compact-nav-code">{pt.id}</span>
-                        <span className="compact-nav-text">
-                          <strong>{'Punto ' + pt.id}</strong>
-                          <small>{pt.criterion}</small>
-                        </span>
-                        <span className="compact-nav-count">{pt.visibleItems.length}</span>
-                      </button>
-                    )) : (
-                      <div className="compact-no-results">
-                        No hay puntos que coincidan con los filtros.
-                        <button type="button" onClick={resetFilters}>Mostrar todos</button>
+                  <div className="quiet-points-list">
+                    {visiblePoints.length ? visiblePoints.map((pt) => {
+                      const isExpanded = point === pt.id || Boolean(query);
+                      const fullItems = pt.items;
+                      const completed = fullItems.filter((it) => getStatus(it.id) === 'completo').length;
+                      const totalDocs = fullItems.reduce((total, it) => total + getDocs(it.id).length, 0);
+                      return (
+                        <section className={isExpanded ? 'quiet-point-card is-expanded' : 'quiet-point-card'} key={pt.id}>
+                          <button type="button" className="quiet-point-toggle"
+                            aria-expanded={isExpanded}
+                            aria-controls={'quiet-point-' + pt.id.replaceAll('.', '-')}
+                            onClick={() => setPoint(point === pt.id ? null : pt.id)}>
+                            <span className="quiet-point-code">{pt.id}</span>
+                            <span className="quiet-point-copy">
+                              <strong>{'Punto ' + pt.id}</strong>
+                              <small>{pt.criterion}</small>
+                            </span>
+                            <span className="quiet-point-summary">
+                              <span>{fullItems.length} medios</span>
+                              <span>{totalDocs} archivos</span>
+                              <span>{completed}/{fullItems.length} completos</span>
+                            </span>
+                            <ChevronRight className="quiet-point-chevron" size={18} aria-hidden="true"/>
+                          </button>
+                          {isExpanded && (
+                            <div className="quiet-point-body" id={'quiet-point-' + pt.id.replaceAll('.', '-')}>
+                              <div className="quiet-point-tools">
+                                <h4>Medios de logro <span>({pt.visibleItems.length})</span></h4>
+                                <details className="quiet-criterion">
+                                  <summary><FileText size={15}/> Información del punto</summary>
+                                  <div className="quiet-criterion-text">
+                                    <strong>Criterio de evaluación</strong>
+                                    <p>{pt.criterion}</p>
+                                  </div>
+                                </details>
+                              </div>
+                              <div className="quiet-media-list">
+                                {pt.visibleItems.map((it) => (
+                                  <button type="button" className="quiet-media-item" key={it.id}
+                                    onClick={() => openItem(it.id)}
+                                    title={'Abrir ficha del medio ' + it.id}>
+                                    <span className="quiet-media-code">{it.id}</span>
+                                    <span className="quiet-media-copy">
+                                      <strong>{it.text?.trim() || normalizeType(it.type)}</strong>
+                                      <small>{normalizeType(it.type)}</small>
+                                    </span>
+                                    <span className={'chip ' + STATUS_META[getStatus(it.id)].color}>{STATUS_META[getStatus(it.id)].name}</span>
+                                    <span className="quiet-media-count"><Paperclip size={14}/>{getDocs(it.id).length} archivo(s)</span>
+                                    <ChevronRight size={17} className="quiet-media-chevron" aria-hidden="true"/>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </section>
+                      );
+                    }) : (
+                      <div className="quiet-empty">
+                        No encontramos puntos con esos filtros.
+                        <button type="button" onClick={resetFilters}>Mostrar todos los puntos</button>
                       </div>
                     )}
                   </div>
-                </aside>
-                <section className="standards-detail" aria-label="Detalle del punto">
-                  <header className="compact-standard-header">
-                    <div className="compact-standard-code">{'E' + standard}</div>
-                    <div className="compact-standard-title">
-                      <span className="standards-kicker">{'ESTÁNDAR ' + standard}</span>
-                      <h2>{selectedStandard.title}</h2>
-                      <p>{selectedStandard.points.length} puntos · {selectedStandard.points.flatMap((pt) => pt.items).length} medios de logro</p>
-                    </div>
-                    <button type="button" className="compact-add" onClick={startQuickUpload}>
-                      <Upload size={16}/> Registrar evidencia
-                    </button>
-                  </header>
-                  {focusedPoint ? (
-                    <>
-                      <div className="compact-focused-header">
-                        <div className="compact-focused-title">
-                          <span className="compact-focused-code">{focusedPoint.id}</span>
-                          <div>
-                            <span className="standards-kicker">CRITERIO DE EVALUACIÓN</span>
-                            <h3>{'Punto ' + focusedPoint.id}</h3>
-                            <p className="compact-criterion-preview">{focusedPoint.criterion}</p>
-                          </div>
-                        </div>
-                        <details className="compact-criterion-full">
-                          <summary>Ver criterio completo <ChevronRight size={14}/></summary>
-                          <p>{focusedPoint.criterion}</p>
-                        </details>
-                        <div className="compact-point-stats">
-                          <span><Layers3 size={16}/><strong>{focusedPoint.visibleItems.length}</strong> Medios</span>
-                          <span><FileText size={16}/><strong>{focusedPoint.visibleItems.filter((it) => getDocs(it.id).length > 0).length}</strong> Con archivos</span>
-                          <span><CheckCircle2 size={16}/><strong>{focusedPoint.visibleItems.filter((it) => getStatus(it.id) === 'completo').length}</strong> Completos</span>
-                        </div>
-                      </div>
-                      <div className="compact-media-header">
-                        <div><h3>Medios de logro</h3><p>Selecciona un medio para consultar la ficha y sus documentos.</p></div>
-                        <span>{focusedPoint.visibleItems.length} registros</span>
-                      </div>
-                      <div className="compact-media-list">
-                        {focusedPoint.visibleItems.map((record) => (
-                          <div className="compact-media-row" key={record.id}>
-                            <button type="button" className="compact-media-primary"
-                              onClick={() => openItem(record.id)} aria-label={'Abrir ficha ' + record.id}>
-                              <span className="compact-media-code">{record.id}</span>
-                              <span className="compact-media-description">
-                                <strong>{record.text?.trim() || normalizeType(record.type)}</strong>
-                                <small>{normalizeType(record.type)}</small>
-                              </span>
-                            </button>
-                            <span className={'chip ' + STATUS_META[getStatus(record.id)].color}>{STATUS_META[getStatus(record.id)].name}</span>
-                            <span className="compact-media-files"><Paperclip size={14}/>{getDocs(record.id).length} archivos</span>
-                            <button type="button" className="compact-open-record" onClick={() => openItem(record.id)}>
-                              Ver ficha <ChevronRight size={14}/>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="compact-point-footer">
-                        <button type="button" disabled={visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) <= 0}
-                          onClick={() => setPoint(visiblePoints[visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) - 1].id)}>
-                          <ChevronLeft size={16}/> Punto anterior
-                        </button>
-                        <span>{visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) + 1} de {visiblePoints.length} puntos</span>
-                        <button type="button" disabled={visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) >= visiblePoints.length - 1}
-                          onClick={() => setPoint(visiblePoints[visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) + 1].id)}>
-                          Siguiente punto <ChevronRight size={16}/>
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="compact-empty-detail">No hay medios que coincidan con tu búsqueda. Modifica los filtros para continuar.</div>
-                  )}
                 </section>
               </div>
             </>
