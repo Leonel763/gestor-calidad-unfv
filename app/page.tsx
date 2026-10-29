@@ -148,6 +148,8 @@ export default function Home() {
   const [typeFilter, setTypeFilter] = useState('Todos');
   const [libraryStandardFilter, setLibraryStandardFilter] = useState('todos');
   const [libraryPage, setLibraryPage] = useState(1);
+  const [quickUpload, setQuickUpload] = useState(false);
+  const [quickMedium, setQuickMedium] = useState('');
   const [tracking, setTracking] = useState<Tracking[]>([]);
   const [documents, setDocuments] = useState<Evidence[]>([]);
   const [alert, setAlert] = useState<Notice | null>(null);
@@ -273,6 +275,13 @@ export default function Home() {
     });
   }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents]);
 
+  // Datos filtrados para la vista compacta; no alteran las evidencias de Supabase.
+  const filteredIds = new Set(filteredMatrixItems.map((record) => record.id));
+  const visiblePoints = selectedStandard.points
+    .map((pt) => ({ ...pt, visibleItems: pt.items.filter((it) => filteredIds.has(it.id)) }))
+    .filter((pt) => pt.visibleItems.length > 0);
+  const focusedPoint = visiblePoints.find((pt) => pt.id === point) || visiblePoints[0] || null;
+
   const libraryRows = useMemo(() => {
     const search = query.trim().toLowerCase();
     return documents.flatMap((doc) => {
@@ -296,6 +305,7 @@ export default function Home() {
   const recentActivity = useMemo(() => {
     const docEvents = documents.slice(0, 3).map((d) => ({
       id: d.id,
+      point_id: d.point_id,
       title: d.file_name,
       subtitle: `Documento cargado · ${d.point_id}`,
       when: new Date(d.created_at).toLocaleDateString('es-PE'),
@@ -306,6 +316,7 @@ export default function Home() {
       .slice(0, 2)
       .map((t) => ({
         id: t.point_id,
+        point_id: t.point_id,
         title: `Punto marcado como completo`,
         subtitle: t.point_id,
         when: new Date(t.updated_at).toLocaleDateString('es-PE'),
@@ -329,6 +340,7 @@ export default function Home() {
 
   function nav(next: 'inicio' | 'estandares' | 'biblioteca' | 'pendientes') {
     setSection(next);
+    setQuickUpload(false);
     setItem(null);
     setPoint(null);
     setSidebar(false);
@@ -337,6 +349,7 @@ export default function Home() {
   }
 
   function openStd(id: number) {
+    setQuickMedium('');
     setStandard(id);
     setSection('estandares');
     setPoint(null);
@@ -344,9 +357,21 @@ export default function Home() {
     setSidebar(false);
   }
 
+  function startQuickUpload() {
+    resetFilters();
+    setSection('estandares');
+    setPoint(null);
+    setItem(null);
+    setQuickMedium('');
+    setQuickUpload(true);
+    setSidebar(false);
+    dismissAlert();
+  }
+
   function openItem(code: string) {
     const record = all.find((row) => row.id === code);
     if (!record) return;
+    setQuickUpload(false);
     setSection('estandares');
     setStandard(record.standard);
     setPoint(record.point);
@@ -680,22 +705,28 @@ setBusy(false);
               <aside className="home-side">
                 <section className="side-widget">
                   <h3>Acciones rápidas</h3>
-                  <button className="action-cta" onClick={() => nav('biblioteca')}><Upload size={18} /> Subir documento</button>
-                  <button className="action-secondary" onClick={() => nav('estandares')}><Paperclip size={18} /> Cargar evidencia</button>
+                  <button className="action-cta" onClick={startQuickUpload}><Upload size={18} /> Registrar evidencia</button>
+                  <button className="action-secondary" onClick={() => nav('biblioteca')}><Library size={18} /> Ver biblioteca documental</button>
                 </section>
 
                 <section className="side-widget">
                   <h3>Actividad reciente</h3>
                   <div className="activity-list">
+
                     {recentActivity.length ? recentActivity.map((event) => (
-                      <div key={`${event.type}-${event.id}`} className="activity-row">
-                        <div className={`activity-icon ${event.type === 'documento' ? 'doc' : 'ok'}`} />
-                        <div>
+                      <button type="button" key={event.type + '-' + event.id}
+                        className="activity-row activity-link"
+                        disabled={!all.some((record) => record.id === event.point_id)}
+                        title={'Ir al medio ' + event.point_id}
+                        onClick={() => { resetFilters(); openItem(event.point_id); }}>
+                        <span className={'activity-icon ' + (event.type === 'documento' ? 'doc' : 'ok')} />
+                        <span className="activity-info">
                           <strong>{event.title}</strong>
                           <small>{event.subtitle}</small>
-                        </div>
-                        <span>{event.when}</span>
-                      </div>
+                          <small className="activity-date">{event.when}</small>
+                        </span>
+                        <ChevronRight size={15} aria-hidden="true" />
+                      </button>
                     )) : <div className="empty slim"><strong>Sin actividad reciente</strong></div>}
                   </div>
                 </section>
@@ -713,77 +744,182 @@ setBusy(false);
 
           {section === 'estandares' && !selected && (
             <>
-              <div className="standards-tabs">
-                {standards.map((st) => (
-                  <button key={st.id} className={st.id === standard ? 'active' : ''} onClick={() => openStd(st.id)}>
-                    E{st.id}
-                  </button>
-                ))}
-              </div>
-              <div className="std-banner redesigned">
-                <div className="standard-id-block">{String(selectedStandard.id).padStart(2, '0')}</div>
-                <div className="banner-info">
-                  <div className="eyebrow">ESTÁNDAR {selectedStandard.id}</div>
-                  <h2>{selectedStandard.title}</h2>
-                  <p>{selectedStandard.points.length} puntos de evaluación y {selectedStandard.points.flatMap((pt) => pt.items).length} medios organizados.</p>
-                </div>
-                <div className="banner-stats">
-                  <div className="banner-percentage">
-                    <span>Progreso general</span>
-                    <b>{Math.round((selectedStandard.points.flatMap((pt) => pt.items).filter((it) => getStatus(it.id) === 'completo').length / Math.max(selectedStandard.points.flatMap((pt) => pt.items).length, 1)) * 100)}%</b>
+              {quickUpload && (
+                <section className="evidence-card" style={{ marginBottom: 20, padding: 24 }}>
+                  <div className="evidence-card-title">
+                    <Upload size={20} />
+                    <h2>Registrar evidencia</h2>
                   </div>
-                  <div className="progress"><i style={{ width: `${Math.round((selectedStandard.points.flatMap((pt) => pt.items).filter((it) => getStatus(it.id) === 'completo').length / Math.max(selectedStandard.points.flatMap((pt) => pt.items).length, 1)) * 100)}%` }} /></div>
-                  <div className="banner-minis">
-                    <span><b>{selectedStandard.points.length}</b>Puntos</span>
-                    <span><b>{selectedStandard.points.flatMap((pt) => pt.items).length}</b>Medios</span>
-                    <span><b>{selectedStandard.points.flatMap((pt) => pt.items).filter((it) => getDocs(it.id).length > 0).length}</b>Con archivo</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="toolbar toolbar-extended">
-                <div className="search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar estándar, código o documento..." /></div>
-                <div className="select-wrap"><Filter size={16} /><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}><option value="todos">Todos los estados</option>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}</select></div>
-                <div className="select-wrap"><select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>{EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
-                <div className="select-wrap"><select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>{TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
-              </div>
-
-              {selectedStandard.points.map((pt) => {
-                const pointItems = pt.items.filter((it) => filteredMatrixItems.some((row) => row.id === it.id));
-                if (!pointItems.length) return null;
-                return (
-                  <div className="point-panel" key={pt.id}>
-                    <button className="point-head" onClick={() => setPoint(point === pt.id ? null : pt.id)}>
-                      <span className="point-code">{pt.id}</span>
-                      <span className="point-summary">
-                        <strong>Punto {pt.id}</strong>
-                        <small>{pt.criterion}</small>
-                      </span>
-                      <span className="point-count">{pointItems.length} medios</span>
-                      <ChevronRight className={point === pt.id ? 'rotated' : ''} size={17} />
-                    </button>
-                    {(point === pt.id || Boolean(query)) && (
-                      <div className="expanded-point">
-                        <div className="criterion-preview"><b>Criterio del punto</b><p>{pt.criterion}</p></div>
-                        <h3 className="subpoints-title">Subpuntos y medios de logro</h3>
-                        {pointItems.map((record) => (
-                          <div className="item-row item-row-rich" key={record.id}>
-                            <button className="item-main" onClick={() => openItem(record.id)}>
-                              <span className="item-code">{record.id}</span>
-                              <span className="item-summary">
-                                {record.text}
-                                <small>{normalizeType(record.type)} · {existenceLabel(record.matrix)} · {getDocs(record.id).length} archivo(s)</small>
-                              </span>
-                            </button>
-                            <span className={`chip ${STATUS_META[getStatus(record.id)].color}`}>{STATUS_META[getStatus(record.id)].name}</span>
-                            <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
-                          </div>
+                  <p>Selecciona el estándar y el medio de logro al que pertenece tu documento. Después podrás adjuntarlo y guardar su estado.</p>
+                  <div className="evidence-form-grid">
+                    <div className="evidence-field">
+                      <label htmlFor="quick-standard">Estándar</label>
+                      <select id="quick-standard" value={standard} onChange={(e) => { setStandard(Number(e.target.value)); setQuickMedium(''); }}>
+                        {standards.map((st) => <option key={st.id} value={st.id}>E{st.id} — {st.title}</option>)}
+                      </select>
+                    </div>
+                    <div className="evidence-field">
+                      <label htmlFor="quick-medium">Medio de logro</label>
+                      <select id="quick-medium" value={quickMedium} onChange={(e) => setQuickMedium(e.target.value)}>
+                        <option value="">Selecciona un medio de logro</option>
+                        {selectedStandard.points.map((pt) => (
+                          <optgroup key={pt.id} label={`Punto ${pt.id}`}>
+                            {pt.items.map((it) => <option key={it.id} value={it.id}>{it.id} — {it.text || pt.criterion}</option>)}
+                          </optgroup>
                         ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
+                    <button className="action-cta" type="button" disabled={!quickMedium} onClick={() => openItem(quickMedium)}>
+                      <Upload size={18} /> Continuar a subir documento
+                    </button>
+                    <button className="action-secondary" type="button" onClick={() => setQuickUpload(false)}>Cancelar</button>
+                  </div>
+                </section>
+              )}
+
+              <div className="standards-workspace">
+                <aside className="standards-navigator" aria-label="Navegación de estándares y puntos">
+                  <div className="standards-navigator-heading">
+                    <span className="standards-kicker">NAVEGACIÓN RÁPIDA</span>
+                    <h2>Explorar estándares</h2>
+                    <p>Selecciona un estándar y luego el punto que necesitas.</p>
+                  </div>
+                  <label htmlFor="compact-standard-select" className="compact-select-label">Estándar</label>
+                  <select id="compact-standard-select" className="compact-standard-select"
+                    value={standard} onChange={(e) => openStd(Number(e.target.value))}>
+                    {standards.map((st) => (
+                      <option key={st.id} value={st.id}>{'E' + st.id + ' — ' + st.title}</option>
+                    ))}
+                  </select>
+                  <div className="compact-navigation-tools">
+                    <label className="compact-search">
+                      <Search size={15} aria-hidden="true" />
+                      <input value={query} onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Buscar puntos o medios" aria-label="Buscar puntos o medios" />
+                    </label>
+                    <details className="compact-filters">
+                      <summary><Filter size={15}/> Filtrar resultados</summary>
+                      <div className="compact-filter-fields">
+                        <label>Estado
+                          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}>
+                            <option value="todos">Todos los estados</option>
+                            {Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}
+                          </select>
+                        </label>
+                        <label>Existencia
+                          <select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>
+                            {EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                          </select>
+                        </label>
+                        <label>Tipo
+                          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                            {TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        </label>
+                        <button type="button" className="compact-clear" onClick={resetFilters}>Limpiar filtros</button>
+                      </div>
+                    </details>
+                  </div>
+                  <div className="compact-nav-list">
+                    <div className="compact-nav-list-head">
+                      <span>Puntos del estándar</span>
+                      <span>{visiblePoints.length} de {selectedStandard.points.length}</span>
+                    </div>
+                    {visiblePoints.length ? visiblePoints.map((pt) => (
+                      <button type="button" key={pt.id}
+                        className={focusedPoint?.id === pt.id ? 'compact-point-link is-active' : 'compact-point-link'}
+                        onClick={() => setPoint(pt.id)}
+                        aria-current={focusedPoint?.id === pt.id ? 'true' : undefined}>
+                        <span className="compact-nav-code">{pt.id}</span>
+                        <span className="compact-nav-text">
+                          <strong>{'Punto ' + pt.id}</strong>
+                          <small>{pt.criterion}</small>
+                        </span>
+                        <span className="compact-nav-count">{pt.visibleItems.length}</span>
+                      </button>
+                    )) : (
+                      <div className="compact-no-results">
+                        No hay puntos que coincidan con los filtros.
+                        <button type="button" onClick={resetFilters}>Mostrar todos</button>
                       </div>
                     )}
                   </div>
-                );
-              })}
+                </aside>
+                <section className="standards-detail" aria-label="Detalle del punto">
+                  <header className="compact-standard-header">
+                    <div className="compact-standard-code">{'E' + standard}</div>
+                    <div className="compact-standard-title">
+                      <span className="standards-kicker">{'ESTÁNDAR ' + standard}</span>
+                      <h2>{selectedStandard.title}</h2>
+                      <p>{selectedStandard.points.length} puntos · {selectedStandard.points.flatMap((pt) => pt.items).length} medios de logro</p>
+                    </div>
+                    <button type="button" className="compact-add" onClick={startQuickUpload}>
+                      <Upload size={16}/> Registrar evidencia
+                    </button>
+                  </header>
+                  {focusedPoint ? (
+                    <>
+                      <div className="compact-focused-header">
+                        <div className="compact-focused-title">
+                          <span className="compact-focused-code">{focusedPoint.id}</span>
+                          <div>
+                            <span className="standards-kicker">CRITERIO DE EVALUACIÓN</span>
+                            <h3>{'Punto ' + focusedPoint.id}</h3>
+                            <p className="compact-criterion-preview">{focusedPoint.criterion}</p>
+                          </div>
+                        </div>
+                        <details className="compact-criterion-full">
+                          <summary>Ver criterio completo <ChevronRight size={14}/></summary>
+                          <p>{focusedPoint.criterion}</p>
+                        </details>
+                        <div className="compact-point-stats">
+                          <span><Layers3 size={16}/><strong>{focusedPoint.visibleItems.length}</strong> Medios</span>
+                          <span><FileText size={16}/><strong>{focusedPoint.visibleItems.filter((it) => getDocs(it.id).length > 0).length}</strong> Con archivos</span>
+                          <span><CheckCircle2 size={16}/><strong>{focusedPoint.visibleItems.filter((it) => getStatus(it.id) === 'completo').length}</strong> Completos</span>
+                        </div>
+                      </div>
+                      <div className="compact-media-header">
+                        <div><h3>Medios de logro</h3><p>Selecciona un medio para consultar la ficha y sus documentos.</p></div>
+                        <span>{focusedPoint.visibleItems.length} registros</span>
+                      </div>
+                      <div className="compact-media-list">
+                        {focusedPoint.visibleItems.map((record) => (
+                          <div className="compact-media-row" key={record.id}>
+                            <button type="button" className="compact-media-primary"
+                              onClick={() => openItem(record.id)} aria-label={'Abrir ficha ' + record.id}>
+                              <span className="compact-media-code">{record.id}</span>
+                              <span className="compact-media-description">
+                                <strong>{record.text?.trim() || normalizeType(record.type)}</strong>
+                                <small>{normalizeType(record.type)}</small>
+                              </span>
+                            </button>
+                            <span className={'chip ' + STATUS_META[getStatus(record.id)].color}>{STATUS_META[getStatus(record.id)].name}</span>
+                            <span className="compact-media-files"><Paperclip size={14}/>{getDocs(record.id).length} archivos</span>
+                            <button type="button" className="compact-open-record" onClick={() => openItem(record.id)}>
+                              Ver ficha <ChevronRight size={14}/>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="compact-point-footer">
+                        <button type="button" disabled={visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) <= 0}
+                          onClick={() => setPoint(visiblePoints[visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) - 1].id)}>
+                          <ChevronLeft size={16}/> Punto anterior
+                        </button>
+                        <span>{visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) + 1} de {visiblePoints.length} puntos</span>
+                        <button type="button" disabled={visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) >= visiblePoints.length - 1}
+                          onClick={() => setPoint(visiblePoints[visiblePoints.findIndex((pt) => pt.id === focusedPoint.id) + 1].id)}>
+                          Siguiente punto <ChevronRight size={16}/>
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="compact-empty-detail">No hay medios que coincidan con tu búsqueda. Modifica los filtros para continuar.</div>
+                  )}
+                </section>
+              </div>
             </>
           )}
 
