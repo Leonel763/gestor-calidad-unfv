@@ -148,6 +148,8 @@ export default function Home() {
   const [typeFilter, setTypeFilter] = useState('Todos');
   const [libraryStandardFilter, setLibraryStandardFilter] = useState('todos');
   const [libraryPage, setLibraryPage] = useState(1);
+  const [quickUpload, setQuickUpload] = useState(false);
+  const [quickMedium, setQuickMedium] = useState('');
   const [tracking, setTracking] = useState<Tracking[]>([]);
   const [documents, setDocuments] = useState<Evidence[]>([]);
   const [alert, setAlert] = useState<Notice | null>(null);
@@ -329,6 +331,7 @@ export default function Home() {
 
   function nav(next: 'inicio' | 'estandares' | 'biblioteca' | 'pendientes') {
     setSection(next);
+    setQuickUpload(false);
     setItem(null);
     setPoint(null);
     setSidebar(false);
@@ -337,6 +340,7 @@ export default function Home() {
   }
 
   function openStd(id: number) {
+    setQuickMedium('');
     setStandard(id);
     setSection('estandares');
     setPoint(null);
@@ -344,9 +348,21 @@ export default function Home() {
     setSidebar(false);
   }
 
+  function startQuickUpload() {
+    resetFilters();
+    setSection('estandares');
+    setPoint(null);
+    setItem(null);
+    setQuickMedium('');
+    setQuickUpload(true);
+    setSidebar(false);
+    dismissAlert();
+  }
+
   function openItem(code: string) {
     const record = all.find((row) => row.id === code);
     if (!record) return;
+    setQuickUpload(false);
     setSection('estandares');
     setStandard(record.standard);
     setPoint(record.point);
@@ -680,8 +696,8 @@ setBusy(false);
               <aside className="home-side">
                 <section className="side-widget">
                   <h3>Acciones rápidas</h3>
-                  <button className="action-cta" onClick={() => nav('biblioteca')}><Upload size={18} /> Subir documento</button>
-                  <button className="action-secondary" onClick={() => nav('estandares')}><Paperclip size={18} /> Cargar evidencia</button>
+                  <button className="action-cta" onClick={startQuickUpload}><Upload size={18} /> Registrar evidencia</button>
+                  <button className="action-secondary" onClick={() => nav('biblioteca')}><Library size={18} /> Ver biblioteca documental</button>
                 </section>
 
                 <section className="side-widget">
@@ -713,6 +729,40 @@ setBusy(false);
 
           {section === 'estandares' && !selected && (
             <>
+              {quickUpload && (
+                <section className="evidence-card" style={{ marginBottom: 20, padding: 24 }}>
+                  <div className="evidence-card-title">
+                    <Upload size={20} />
+                    <h2>Registrar evidencia</h2>
+                  </div>
+                  <p>Selecciona el estándar y el medio de logro al que pertenece tu documento. Después podrás adjuntarlo y guardar su estado.</p>
+                  <div className="evidence-form-grid">
+                    <div className="evidence-field">
+                      <label htmlFor="quick-standard">Estándar</label>
+                      <select id="quick-standard" value={standard} onChange={(e) => { setStandard(Number(e.target.value)); setQuickMedium(''); }}>
+                        {standards.map((st) => <option key={st.id} value={st.id}>E{st.id} — {st.title}</option>)}
+                      </select>
+                    </div>
+                    <div className="evidence-field">
+                      <label htmlFor="quick-medium">Medio de logro</label>
+                      <select id="quick-medium" value={quickMedium} onChange={(e) => setQuickMedium(e.target.value)}>
+                        <option value="">Selecciona un medio de logro</option>
+                        {selectedStandard.points.map((pt) => (
+                          <optgroup key={pt.id} label={`Punto ${pt.id}`}>
+                            {pt.items.map((it) => <option key={it.id} value={it.id}>{it.id} — {it.text || pt.criterion}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
+                    <button className="action-cta" type="button" disabled={!quickMedium} onClick={() => openItem(quickMedium)}>
+                      <Upload size={18} /> Continuar a subir documento
+                    </button>
+                    <button className="action-secondary" type="button" onClick={() => setQuickUpload(false)}>Cancelar</button>
+                  </div>
+                </section>
+              )}
               <div className="standards-tabs">
                 {standards.map((st) => (
                   <button key={st.id} className={st.id === standard ? 'active' : ''} onClick={() => openStd(st.id)}>
