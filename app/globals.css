@@ -789,3 +789,61 @@
 @media(max-width:1180px){.quiet-workspace{grid-template-columns:222px minmax(0,1fr)}.quiet-point-summary span:nth-child(2){display:none}.quiet-media-count{display:none}}
 @media(max-width:910px){.quiet-workspace{grid-template-columns:1fr}.quiet-sidebar{position:static;max-height:245px}.quiet-standard-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.quiet-content{padding:18px}}
 @media(max-width:680px){.quiet-page-title{align-items:flex-start}.quiet-page-title h1{font-size:21px}.quiet-standard-list{grid-template-columns:1fr}.quiet-standard-header{flex-wrap:wrap}.quiet-standard-heading{flex-basis:calc(100% - 77px)}.quiet-add-evidence{margin-left:0;width:100%;justify-content:center}.quiet-points-header{align-items:flex-start}.quiet-point-summary span:nth-child(3){display:none}.quiet-point-summary{gap:4px}.quiet-point-toggle{gap:9px;padding:12px 10px}.quiet-point-code{flex-basis:35px;height:38px}.quiet-media-item{flex-wrap:wrap}.quiet-media-copy{flex-basis:calc(100% - 70px)}.quiet-media-item .chip{margin-left:62px}.quiet-media-count{display:flex}.quiet-point-tools{flex-wrap:wrap}.quiet-filter-panel{right:0;width:min(270px,82vw)}}
+
+
+/* Indicadores visuales por estándar, punto y medio. No alteran registros. */
+.quiet-status-badge{display:inline-flex;align-items:center;justify-content:center;gap:5px;border-radius:999px;padding:6px 10px;font:700 10px/1.25 var(--font);white-space:nowrap;border:1px solid transparent}
+.quiet-status-badge.status-completo{background:#e5f5eb;color:#16754c;border-color:#c7e9d5}
+.quiet-status-badge.status-parcial{background:#eaf3ff;color:#2465b0;border-color:#cee0fb}
+.quiet-status-badge.status-complementar{background:#fff4de;color:#995c0e;border-color:#f6dcaf}
+.quiet-status-badge.status-simulado{background:#f1ecff;color:#7354a8;border-color:#ddd2fa}
+.quiet-status-badge.status-pendiente{background:#f0f3f6;color:#607182;border-color:#dfe6ec}
+.quiet-status-badge.status-en_proceso{background:#f1ecff;color:#7354a8;border-color:#ddd2fa}
+.quiet-standard-meta{display:flex;gap:6px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:5px}
+.quiet-standard-meta small{margin:0}
+.quiet-status-dot-label{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;white-space:nowrap}
+.quiet-status-dot-label:before{content:"";width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:currentColor}
+.quiet-status-dot-label.status-completo{color:#178254}
+.quiet-status-dot-label.status-parcial{color:#2675c9}
+.quiet-status-dot-label.status-complementar{color:#bb7a1d}
+.quiet-status-dot-label.status-simulado{color:#7758b0}
+.quiet-status-dot-label.status-pendiente{color:#788897}
+.quiet-standard-progress{flex:0 0 185px;min-width:0;background:#fbfcfd;border:1px solid #e7edf2;border-radius:11px;padding:12px 13px}
+.quiet-standard-progress-top{display:flex;justify-content:space-between;gap:9px;align-items:center;margin-bottom:9px}
+.quiet-standard-progress-top strong{font:800 16px var(--display);color:#173e53}
+.quiet-progress-track{display:block;height:6px;background:#e4eaf0;border-radius:20px;overflow:hidden;min-width:58px}
+.quiet-progress-track>span{display:block;height:100%;background:#27a474;border-radius:20px;transition:width .2s}
+.quiet-standard-progress small{display:block;font-size:10px;color:#7d91a1;margin-top:7px}
+.quiet-status-help{border-bottom:1px solid #edf1f4;padding:10px 1px}
+.quiet-status-help>summary{cursor:pointer;color:#527c8e;font-size:11px;font-weight:700}
+.quiet-status-help-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.quiet-status-help-list>span{font-size:10px;color:#667c8c;display:flex;align-items:center;gap:8px;line-height:1.6}
+.quiet-status-help-list .quiet-status-badge{flex-shrink:0}
+.quiet-point-card{position:relative}
+.quiet-point-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#c7d0db}
+.quiet-point-card.status-completo:before{background:#2ca978}
+.quiet-point-card.status-parcial:before{background:#358fe0}
+.quiet-point-card.status-complementar:before{background:#e2a13f}
+.quiet-point-card.status-simulado:before{background:#9a81d6}
+.quiet-point-card.status-pendiente:before{background:#9ca9b7}
+.quiet-point-card.status-completo.is-expanded{border-color:#c9e7d7}
+.quiet-point-card.status-parcial.is-expanded{border-color:#cddff3}
+.quiet-point-card.status-complementar.is-expanded{border-color:#f1dfbe}
+.quiet-point-card.status-simulado.is-expanded{border-color:#dcd4ef}
+.quiet-point-summary{gap:12px}
+.quiet-point-progress{display:flex;flex-direction:column;gap:6px;min-width:104px}
+.quiet-point-progress>span:first-child{font-size:10px;font-weight:700;color:#4d667c}
+.quiet-point-progress .quiet-progress-track{height:5px;width:100%}
+.quiet-point-card.status-complementar .quiet-progress-track>span{background:#dfa13e}
+.quiet-point-card.status-simulado .quiet-progress-track>span{background:#9175c7}
+.quiet-point-card.status-parcial .quiet-progress-track>span{background:#3b8edd}
+.quiet-media-item{position:relative;padding-left:16px}
+.quiet-media-item:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#c0ccd6}
+.quiet-media-item.status-completo:before{background:#3dae7c}
+.quiet-media-item.status-complementar:before{background:#e0a341}
+.quiet-media-item.status-en_proceso:before{background:#9271d1}
+.quiet-media-item.status-pendiente:before{background:#b8c3cf}
+.quiet-media-item .quiet-status-badge{max-width:155px;text-align:center;white-space:normal}
+@media(max-width:1300px){.quiet-standard-progress{flex-basis:160px}.quiet-point-summary{gap:8px}}
+@media(max-width:1120px){.quiet-standard-progress{order:3;flex-basis:100%;max-width:245px}.quiet-standard-header{flex-wrap:wrap}.quiet-status-help-list{grid-template-columns:1fr}}
+@media(max-width:760px){.quiet-standard-progress{order:3;max-width:none}.quiet-standard-progress-top{justify-content:flex-start}.quiet-standard-progress-top strong{margin-left:auto}.quiet-point-toggle{flex-wrap:wrap}.quiet-point-summary{margin-left:50px;flex-basis:calc(100% - 70px);justify-content:space-between}.quiet-media-item .quiet-status-badge{margin-left:62px}.quiet-status-help-list>span{flex-wrap:wrap}}
