@@ -170,6 +170,10 @@ export default function Home() {
   const [quickUpload, setQuickUpload] = useState(false);
   const [quickMedium, setQuickMedium] = useState('');
   const [quickMediaSearch, setQuickMediaSearch] = useState('');
+  const [quickUploadStep, setQuickUploadStep] = useState<'select' | 'attach' | 'done'>('select');
+  const [quickUploadError, setQuickUploadError] = useState('');
+  const [quickSavedNames, setQuickSavedNames] = useState<string[]>([]);
+  const quickFileInput = useRef<HTMLInputElement | null>(null);
   const [uploadFromMedia, setUploadFromMedia] = useState(false);
   const [explorerStatus, setExplorerStatus] = useState<'todos' | VisualSummaryKey>('todos');
   const [tracking, setTracking] = useState<Tracking[]>([]);
@@ -197,6 +201,7 @@ export default function Home() {
   }
 
   function showAlert(message: string, kind: Notice['kind'] = 'error') {
+    if (quickUpload && kind === 'error') setQuickUploadError(message);
     if (alertTimer.current !== null) window.clearTimeout(alertTimer.current);
     setAlert({ message, kind });
     alertTimer.current = window.setTimeout(() => {
@@ -397,15 +402,63 @@ export default function Home() {
   }
 
   function startQuickUpload() {
+    if (busy) return;
     setUploadFromMedia(false);
-    resetFilters();
-    setSection('estandares');
-    setPoint(null);
-    setItem(null);
     setQuickMedium('');
     setQuickMediaSearch('');
+    setQuickUploadError('');
+    setQuickSavedNames([]);
+    setQuickUploadStep('select');
+    setFiles([]);
+    setUploadStatus('');
+    setUploader('');
+    setNotes('');
     setQuickUpload(true);
     dismissAlert();
+  }
+
+  function openQuickUploadFor(code: string) {
+    const record = all.find((row) => row.id === code);
+    if (!record || busy) return;
+    setStandard(record.standard);
+    setQuickMedium(record.id);
+    setQuickMediaSearch('');
+    setQuickUploadError('');
+    setQuickSavedNames([]);
+    setQuickUploadStep('attach');
+    setFiles([]);
+    setUploadStatus('');
+    setUploader('');
+    setNotes('');
+    setQuickUpload(true);
+    dismissAlert();
+  }
+
+  function closeQuickUpload() {
+    if (busy) return;
+    setQuickUpload(false);
+    setQuickUploadError('');
+    setQuickUploadStep('select');
+  }
+
+  function checkQuickUploadFiles(chosen: File[]) {
+    const allowed = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
+    const invalid = chosen.find((file) => {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      return !allowed.includes(ext) || file.size > 15 * 1024 * 1024;
+    });
+    if (invalid) {
+      setQuickUploadError('Archivo no permitido: ' + invalid.name + '. Usa PDF, Word, Excel o imágenes de hasta 15 MB por archivo.');
+      return;
+    }
+    setQuickUploadError('');
+    setFiles((previous) => {
+      const unique = new Map<string, File>();
+      [...previous, ...chosen].forEach((file) =>
+        unique.set(file.name + '-' + file.size + '-' + file.lastModified, file)
+      );
+      return Array.from(unique.values());
+    });
   }
 
   function openItem(code: string, forUpload = false) {
@@ -427,27 +480,31 @@ export default function Home() {
 
 
   async function upload() {
-  if (!sb || !selected || busy) return;
+  const target = quickUpload ? all.find((row) => row.id === quickMedium) || null : selected;
+  if (!sb || !target || busy) return;
 
   if (!uploadStatus) {
     showAlert('Debes seleccionar el estado del medio.');
     return;
   }
 
-  if (!files.length && getDocs(selected.id).length === 0) {
+  if (!files.length && (quickUpload || getDocs(target.id).length === 0)) {
     showAlert('Debes adjuntar al menos un documento.');
     return;
   }
+    const whitelist = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
+    const invalid = files.find((file) => {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      return !whitelist.includes(ext) || file.size > 15 * 1024 * 1024;
+    });
+    if (invalid) {
+      showAlert(`Archivo no válido: ${invalid.name}. Admite PDF, Word, Excel e imágenes hasta 15 MB.`);
+      return;
+    }
     setBusy(true);
     dismissAlert();
-    const whitelist = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
+    try {
     for (const file of files) {
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      if (!whitelist.includes(ext) || file.size > 15 * 1024 * 1024) {
-        showAlert(`Archivo no válido: ${file.name}. Admite PDF, Word, Excel e imágenes hasta 15 MB.`);
-        setBusy(false);
-        return;
-      }
       const safeName = file.name
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -464,7 +521,7 @@ export default function Home() {
         return;
       }
       const { error: dbErr } = await sb.from('evidencias').insert({
-        point_id: selected.id,
+        point_id: target.id,
         file_name: file.name,
         file_path: path,
         mime_type: file.type || 'application/pdf',
@@ -483,7 +540,7 @@ export default function Home() {
   .from('seguimiento')
   .upsert(
     {
-      point_id: selected.id,
+      point_id: target.id,
       status: uploadStatus,
       notes: '',
       updated_at: new Date().toISOString(),
@@ -500,18 +557,25 @@ if (statusError) {
   return;
 }
 
+const savedNames = files.map((file) => file.name);
 setFiles([]);
 setUploader('');
 setNotes('');
 setUploadStatus('');
 
-showAlert(
-  'Documentos y estado guardados correctamente.',
-  'success'
-);
-
 await refresh();
+if (quickUpload) {
+  setQuickSavedNames(savedNames);
+  setQuickUploadError('');
+  setQuickUploadStep('done');
+} else {
+  showAlert('Documentos y estado guardados correctamente.', 'success');
+}
 setBusy(false);
+    } catch (error) {
+      showAlert('No se pudo completar la carga: ' + (error instanceof Error ? error.message : 'error inesperado'));
+      setBusy(false);
+    }
   }
 
   async function openPreview(doc: Evidence) {
@@ -592,11 +656,11 @@ setBusy(false);
   useEffect(() => {
     if (!quickUpload) return;
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setQuickUpload(false);
+      if (event.key === 'Escape' && !busy) closeQuickUpload();
     };
     document.addEventListener('keydown', onEscape);
     return () => document.removeEventListener('keydown', onEscape);
-  }, [quickUpload]);
+  }, [quickUpload, busy]);
 
   const menu = [
     { id: 'inicio', title: 'Inicio', icon: LayoutDashboard },
@@ -1093,7 +1157,7 @@ setBusy(false);
                                     </button>
                                     <span className={'quiet-status-badge status-' + getStatus(it.id)}>{STATUS_META[getStatus(it.id)].name}</span>
                                     <span className="tri-media-files"><Paperclip size={14}/>{getDocs(it.id).length}</span>
-                                    <button type="button" className="tri-media-upload" onClick={() => openItem(it.id, true)}
+                                    <button type="button" className="tri-media-upload" onClick={() => openQuickUploadFor(it.id)}
                                       aria-label={'Cargar documento en el medio ' + it.id}>
                                       <Upload size={15}/> Cargar documento
                                     </button>
