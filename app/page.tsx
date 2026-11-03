@@ -169,6 +169,7 @@ export default function Home() {
   const [libraryPage, setLibraryPage] = useState(1);
   const [quickUpload, setQuickUpload] = useState(false);
   const [quickMedium, setQuickMedium] = useState('');
+  const [quickMediaSearch, setQuickMediaSearch] = useState('');
   const [uploadFromMedia, setUploadFromMedia] = useState(false);
   const [explorerStatus, setExplorerStatus] = useState<'todos' | VisualSummaryKey>('todos');
   const [tracking, setTracking] = useState<Tracking[]>([]);
@@ -271,6 +272,23 @@ export default function Home() {
   const numberedSubpoints = all.filter((a) => a.id.split('.').length === 3).length;
   const generalPercent = Math.round((complete / Math.max(all.length, 1)) * 100);
   const selectedStandard = standards.find((s) => s.id === standard) || standards[0];
+  const quickMediaOptions = selectedStandard.points.flatMap((pt) =>
+    pt.items.map((it) => ({
+      id: it.id,
+      point: pt.id,
+      description: it.text?.trim() || normalizeType(it.type),
+      type: normalizeType(it.type),
+    }))
+  );
+  const normalizedQuickSearch = quickMediaSearch.trim().toLocaleLowerCase('es');
+  const visibleQuickMediaOptions = normalizedQuickSearch
+    ? quickMediaOptions.filter((option) =>
+        [option.id, option.point, option.description, option.type].some((field) =>
+          field.toLocaleLowerCase('es').includes(normalizedQuickSearch)
+        )
+      )
+    : quickMediaOptions;
+  const selectedQuickMedia = quickMediaOptions.find((option) => option.id === quickMedium);
   const selected = all.find((a) => a.id === item) || null;
   const selectedStandardSummary = groupSummary(selectedStandard.points.flatMap((pt) => pt.items));
 
@@ -385,6 +403,7 @@ export default function Home() {
     setPoint(null);
     setItem(null);
     setQuickMedium('');
+    setQuickMediaSearch('');
     setQuickUpload(true);
     dismissAlert();
   }
@@ -655,22 +674,65 @@ setBusy(false);
                 <div className="quick-upload-fields">
                   <label htmlFor="quick-standard">Estándar
                     <select id="quick-standard" value={standard}
-                      onChange={(event) => { setStandard(Number(event.target.value)); setQuickMedium(''); }}>
-                      {standards.map((st) => <option key={st.id} value={st.id}>E{st.id} — {st.title}</option>)}
+                      onChange={(event) => {
+                        setStandard(Number(event.target.value));
+                        setQuickMedium('');
+                        setQuickMediaSearch('');
+                      }}>
+                      {standards.map((st) =>
+                        <option key={st.id} value={st.id}>E{String(st.id).padStart(2, '0')} — {st.title.slice(0, 66)}{st.title.length > 66 ? '…' : ''}</option>
+                      )}
                     </select>
                   </label>
-                  <label htmlFor="quick-medium">Medio de logro
-                    <select id="quick-medium" value={quickMedium} onChange={(event) => setQuickMedium(event.target.value)}>
-                      <option value="">Selecciona un medio de logro</option>
-                      {selectedStandard.points.map((pt) => (
-                        <optgroup key={pt.id} label={`Punto ${pt.id}`}>
-                          {pt.items.map((it) => <option key={it.id} value={it.id}>
-                            {it.id} — {it.text || pt.criterion}
-                          </option>)}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="quick-upload-media-picker">
+                    <label htmlFor="quick-media-search">Buscar medio de logro</label>
+                    <div className="quick-media-search">
+                      <Search size={17} aria-hidden="true"/>
+                      <input
+                        id="quick-media-search"
+                        type="search"
+                        placeholder="Código o palabra clave (ej.: 1.1.2, matriz)"
+                        value={quickMediaSearch}
+                        onChange={(event) => setQuickMediaSearch(event.target.value)}
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="quick-media-results-summary" role="status">
+                      <span>{visibleQuickMediaOptions.length} de {quickMediaOptions.length} medios</span>
+                      <span>Selecciona uno para continuar</span>
+                    </div>
+                    <div className="quick-media-results" aria-label="Resultados de medios de logro">
+                      {visibleQuickMediaOptions.length ? visibleQuickMediaOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          className={quickMedium === option.id ? 'quick-media-result is-selected' : 'quick-media-result'}
+                          aria-pressed={quickMedium === option.id}
+                          onClick={() => setQuickMedium(option.id)}
+                          title={option.id + ' — ' + option.description}
+                        >
+                          <span className="quick-media-result-code">{option.id}</span>
+                          <span className="quick-media-result-text">
+                            <strong>{option.description}</strong>
+                            <small>Punto {option.point} · {option.type}</small>
+                          </span>
+                          {quickMedium === option.id
+                            ? <CheckCircle2 size={18} color="#19835b" aria-hidden="true"/>
+                            : <ChevronRight size={16} aria-hidden="true"/>}
+                        </button>
+                      )) : (
+                        <div className="quick-media-no-results">
+                          No hay medios que coincidan. Prueba con el código o una palabra de la descripción.
+                        </div>
+                      )}
+                    </div>
+                    {selectedQuickMedia && (
+                      <p className="quick-media-selected" role="status">
+                        <CheckCircle2 size={15} aria-hidden="true"/>
+                        Seleccionado: <strong>{selectedQuickMedia.id}</strong> — {selectedQuickMedia.type}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="quick-upload-actions">
                   <button type="button" className="quick-upload-cancel" onClick={() => setQuickUpload(false)}>Cancelar</button>
