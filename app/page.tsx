@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
-  Cloud,
   Download,
   Eye,
   FileText,
@@ -20,7 +19,6 @@ import {
   Library,
   Landmark,
   BarChart3,
-  Menu,
   Paperclip,
   Search,
   Trash2,
@@ -163,7 +161,6 @@ export default function Home() {
   const [standard, setStandard] = useState<number>(1);
   const [point, setPoint] = useState<string | null>('1.1');
   const [item, setItem] = useState<string | null>(null);
-  const [sidebar, setSidebar] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | Status>('todos');
   const [existenceFilter, setExistenceFilter] = useState<'todos' | Existence>('todos');
@@ -366,7 +363,6 @@ export default function Home() {
     setQuickUpload(false);
     setItem(null);
     setPoint(next === 'estandares' ? standards.find((st) => st.id === standard)?.points[0]?.id || null : null);
-    setSidebar(false);
     resetFilters();
     dismissAlert();
   }
@@ -377,7 +373,6 @@ export default function Home() {
     setSection('estandares');
     setPoint(standards.find((st) => st.id === id)?.points[0]?.id || null);
     setItem(null);
-    setSidebar(false);
   }
 
   function startQuickUpload() {
@@ -387,7 +382,6 @@ export default function Home() {
     setItem(null);
     setQuickMedium('');
     setQuickUpload(true);
-    setSidebar(false);
     dismissAlert();
   }
 
@@ -572,66 +566,56 @@ setBusy(false);
           : 'Seguimiento';
 
   const menu = [
-    { id: 'inicio', title: 'Panel general', icon: LayoutDashboard },
+    { id: 'inicio', title: 'Inicio', icon: LayoutDashboard },
     { id: 'estandares', title: 'Estándares', icon: Layers3 },
-    { id: 'biblioteca', title: 'Biblioteca documental', icon: Library },
+    { id: 'biblioteca', title: 'Biblioteca', icon: Library },
   ] as const;
 
   return (
-    <div className="shell shell-modern">
-      <aside className={`sidebar sidebar-modern ${sidebar ? 'show' : ''}`}>
-        <div className="brand brand-modern">
-          <div className="brand-symbol">
-            <BookOpen size={22} />
-          </div>
-          <div className="brand-title">
-            <strong>Gestión de Calidad</strong>
-            <span>Derecho · UNFV</span>
-          </div>
-          <button className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebar(false)}>
-            <X size={18} />
-          </button>
-        </div>
-        <div className="side-caption">ESPACIO DE TRABAJO</div>
-        <nav>
-          {menu.map((entry) => (
-            <button key={entry.id} className={`side-nav ${section === entry.id ? 'active' : ''}`} onClick={() => nav(entry.id)}>
-              <entry.icon size={18} />
-              <span>{entry.title}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="unfv-mini-panel">
-          <div className="unfv-mini-mark" aria-hidden="true"><Landmark size={26} /></div>
-          <div>
-            <strong>Universidad Nacional</strong>
-            <span>Federico Villarreal</span>
-            <small>Facultad de Derecho · Gestión de Calidad 2026</small>
-          </div>
-        </div>
-        <div className="side-footer">
-          <span className="pulse" /> {sb ? 'Repositorio conectado' : 'Modo consulta'}
-          <small>Matriz GAB Derecho · 2026</small>
-        </div>
-      </aside>
-
-      <div className="main">
-        <header className="topbar topbar-modern">
-          <button className="mobile-menu" onClick={() => setSidebar(true)} aria-label="Abrir menú">
-            <Menu size={22} />
-          </button>
-          <div className="breadcrumbs">
-            Facultad de Derecho <ChevronRight size={13} /> <b>{title}</b>
-          </div>
-          <div className="top-right">
-            <div className="top-search">
-              <Search size={17} />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar estándares, documentos..." />
-            </div>
-            <span className="top-pill ok">
-              <Cloud size={15} /> Nube conectada
+    <div className="shell shell-modern shell-horizontal">
+      <div className="main main-horizontal">
+        <header className="topbar topbar-modern simple-topbar">
+          <button type="button" className="simple-brand" onClick={() => nav('inicio')} aria-label="Ir a Inicio">
+            <span className="simple-brand-symbol"><Landmark size={23} /></span>
+            <span className="simple-brand-copy">
+              <strong>UNFV <span className="simple-brand-divider" aria-hidden="true" /> Gestión de Calidad</strong>
+              <small>Facultad de Derecho</small>
             </span>
-          </div>
+          </button>
+          <nav className="simple-main-nav" aria-label="Secciones principales">
+            {menu.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={section === entry.id ? 'simple-nav-button is-active' : 'simple-nav-button'}
+                onClick={() => nav(entry.id)}
+                aria-current={section === entry.id ? 'page' : undefined}
+              >
+                <entry.icon size={17} />
+                <span>{entry.title}</span>
+              </button>
+            ))}
+          </nav>
+          <label className="simple-header-search">
+            <Search size={17} aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(e) => {
+                const next = e.target.value;
+                setQuery(next);
+                if (next.trim() && (section === 'inicio' || item)) {
+                  setSection('estandares');
+                  setItem(null);
+                  setQuickUpload(false);
+                }
+              }}
+              placeholder={section === 'biblioteca' ? 'Buscar documentos...' : 'Buscar estándares y medios...'}
+              aria-label="Buscar estándares, medios y documentos"
+            />
+            {query && (
+              <button type="button" className="simple-search-clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15}/></button>
+            )}
+          </label>
         </header>
 
         <div className="container page-modern">
