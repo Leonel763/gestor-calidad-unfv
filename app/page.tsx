@@ -629,13 +629,13 @@ setBusy(false);
           )}
 
           {!selected && section !== 'estandares' && (
-            <div className="page-heading page-hero with-photo">
+            <div className={section === 'inicio' ? 'page-heading page-hero with-photo home-v2-hero' : 'page-heading page-hero with-photo'}>
               <div>
                 <div className="eyebrow">
                   <span className="eyebrow-dot" /> SISTEMA DE AUTOEVALUACIÓN Y ACREDITACIÓN
                 </div>
                 <h1>{section === 'inicio' ? 'Panel de control' : title}</h1>
-                <p>Información y evidencias organizadas para trabajar con claridad, en un solo lugar.</p>
+                <p>{section === 'inicio' ? 'Seguimiento del sistema de autoevaluación y acreditación.' : 'Información y evidencias organizadas para trabajar con claridad, en un solo lugar.'}</p>
               </div>
               <div className="heading-badge">
                 <BookOpen size={18} /> 18 estándares
@@ -644,108 +644,148 @@ setBusy(false);
           )}
 
           {section === 'inicio' && !selected && (
-            <div className="home-layout">
-              <div className="home-main">
-                <div className="metrics metrics-modern">
-                  <StatCard number={standards.length} label="Estándares" sub="Matriz oficial" kind="m-one" />
-                  <StatCard number={allPoints} label="Puntos" sub="Total de evaluación" kind="m-two" />
-                  <StatCard number={all.length} label="Medios de logro" sub="Subpuntos numerados" kind="m-three" />
-                  <StatCard number={documents.length} label="Documentos cargados" sub="Evidencias en biblioteca" kind="m-four" />
-                </div>
-
-                <section className="progress-overview-card">
-                  <div className="progress-overview-head">
-                    <h2>Progreso general</h2>
+            <div className="home-v2">
+              <div className="home-v2-overview">
+                <section className="home-v2-card home-v2-main-progress" aria-label="Avance de acreditación">
+                  <div className="home-v2-section-heading">
+                    <span className="home-v2-title-icon"><CheckCircle2 size={22}/></span>
+                    <h2>Avance de acreditación</h2>
                   </div>
-                  <div className="progress-overview-body">
-                    <div className="progress-hero">
-                      <div className="progress-donut" style={{ ['--progress' as string]: `${generalPercent}%` } as CSSProperties}>
-                        <span>{generalPercent}%</span>
-                      </div>
-                      <div className="progress-copy">
-                        <strong>{complete} de {all.length} medios completados</strong>
-                        <p>Avance basado en {all.length} medios registrables; incluye {all.length - numberedSubpoints} puntos sin subpunto numerado.</p>
-                        <div className="progress-line"><i style={{ width: `${generalPercent}%` }} /></div>
+                  <div className="home-v2-progress-content">
+                    <div
+                      className="home-v2-progress-ring"
+                      style={{ ['--progress' as string]: `${generalPercent}%` } as CSSProperties}
+                      aria-label={`Avance total de ${generalPercent} por ciento`}
+                      role="img"
+                    >
+                      <div>
+                        <strong>{generalPercent}%</strong>
+                        <span>Avance general</span>
                       </div>
                     </div>
-                    <div className="progress-counters">
-                      <div className="overview-mini green"><span>Completos</span><b>{complete}</b></div>
-                      <div className="overview-mini purple"><span>Con datos simulados</span><b>{simulated}</b></div>
-                      <div className="overview-mini amber"><span>Por complementar</span><b>{need}</b></div>
-                      <div className="overview-mini neutral"><span>Pendientes</span><b>{pending}</b></div>
+                    <div className="home-v2-progress-description">
+                      <strong>{complete} de {all.length}</strong>
+                      <span>medios de logro completados</span>
+                      <div className="home-v2-progress-line" aria-hidden="true">
+                        <span style={{ width: `${generalPercent}%` }} />
+                      </div>
+                      <div className="home-v2-progress-totals">
+                        <span><Layers3 size={16}/><b>{standards.length}</b><small>Estándares</small></span>
+                        <span><ClipboardList size={16}/><b>{allPoints}</b><small>Puntos</small></span>
+                        <span><FileText size={16}/><b>{all.length}</b><small>Medios</small></span>
+                      </div>
                     </div>
                   </div>
                 </section>
 
-                <section className="block">
-                  <div className="block-title">
-                    <div>
-                      <h2>Explorar estándares</h2>
-                      <p>Selecciona un estándar para consultar sus puntos y medios de logro.</p>
-                    </div>
+                <section className="home-v2-card home-v2-status-card">
+                  <div className="home-v2-section-heading">
+                    <h2>Estado de medios de logro</h2>
                   </div>
-                  <div className="standard-grid grid-modern">
-                    {standards.slice(0, 6).map((st) => {
+                  <div className="home-v2-status-list">
+                    {([
+                      { key: 'complete', label: 'Completos', value: complete },
+                      { key: 'simulated', label: 'Con datos simulados', value: simulated },
+                      { key: 'needs', label: 'Por complementar', value: need },
+                      { key: 'pending', label: 'Pendientes', value: pending },
+                    ] as const).map((entry) => (
+                      <div key={entry.key} className="home-v2-status-row">
+                        <span className={`home-v2-status-dot ${entry.key}`} aria-hidden="true" />
+                        <span>{entry.label}</span>
+                        <strong>{entry.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="home-v2-card home-v2-quick-actions">
+                  <div className="home-v2-section-heading">
+                    <span className="home-v2-bolt"><Upload size={19} /></span>
+                    <h2>Acciones rápidas</h2>
+                  </div>
+                  <button type="button" className="home-v2-primary-action" onClick={startQuickUpload}>
+                    <Upload size={18}/> Registrar evidencia
+                  </button>
+                  <button type="button" className="home-v2-secondary-action" onClick={() => nav('biblioteca')}>
+                    <Library size={18}/> Ver biblioteca documental
+                  </button>
+                  <p>Gestiona las evidencias desde el medio de logro correspondiente.</p>
+                </section>
+              </div>
+
+              <div className="home-v2-bottom">
+                <section className="home-v2-card home-v2-standards">
+                  <div className="home-v2-block-heading">
+                    <div className="home-v2-heading-left">
+                      <Layers3 size={21}/>
+                      <h2>Estándares y su avance</h2>
+                    </div>
+                    <span>{standards.length} estándares</span>
+                  </div>
+                  <div className="home-v2-standards-list">
+                    {standards.slice(0, 3).map((st) => {
                       const stItems = st.points.flatMap((pt) => pt.items);
-                      const stCompleted = stItems.filter((it) => getStatus(it.id) === 'completo').length;
-                      const pct = Math.round((stCompleted / Math.max(stItems.length, 1)) * 100);
+                      const summary = groupSummary(stItems);
                       return (
-                        <button className="standard-card standard-card-modern" key={st.id} onClick={() => openStd(st.id)}>
-                          <div className="card-head">
-                            <span className="std-number">E{String(st.id).padStart(2, '0')}</span>
-                            <Folder size={18} />
-                          </div>
-                          <h3>{st.title}</h3>
-                          <div className="card-meta">
-                            <span>{st.points.length} puntos · {stItems.length} medios</span>
-                            <span>{stCompleted}/{stItems.length}</span>
-                          </div>
-                          <div className="progress"><i style={{ width: `${pct}%` }} /></div>
-                          <div className="card-actions-inline">Ver detalle <ChevronRight size={14} /></div>
+                        <button
+                          type="button"
+                          key={st.id}
+                          className="home-v2-standard-row"
+                          onClick={() => openStd(st.id)}
+                          aria-label={`Consultar estándar ${st.id}, ${summary.completed} de ${summary.total} medios completos`}
+                        >
+                          <span className="home-v2-standard-code">E{String(st.id).padStart(2, '0')}</span>
+                          <span className="home-v2-standard-info">
+                            <strong>{st.title}</strong>
+                            <small>{st.points.length} puntos · {summary.total} medios de logro</small>
+                            <span className="home-v2-standard-track" aria-hidden="true">
+                              <span style={{ width: `${summary.percent}%` }}/>
+                            </span>
+                          </span>
+                          <span className="home-v2-standard-fraction">{summary.completed}/{summary.total}</span>
+                          <span className={`home-v2-mini-status status-${summary.kind}`}>{summary.label}</span>
+                          <ChevronRight size={17} className="home-v2-row-chevron"/>
                         </button>
                       );
                     })}
                   </div>
-                </section>
-              </div>
-
-              <aside className="home-side">
-                <section className="side-widget">
-                  <h3>Acciones rápidas</h3>
-                  <button className="action-cta" onClick={startQuickUpload}><Upload size={18} /> Registrar evidencia</button>
-                  <button className="action-secondary" onClick={() => nav('biblioteca')}><Library size={18} /> Ver biblioteca documental</button>
+                  <button type="button" className="home-v2-see-all" onClick={() => nav('estandares')}>
+                    Ver todos los estándares <ChevronRight size={17}/>
+                  </button>
                 </section>
 
-                <section className="side-widget">
-                  <h3>Actividad reciente</h3>
-                  <div className="activity-list">
-
-                    {recentActivity.length ? recentActivity.map((event) => (
-                      <button type="button" key={event.type + '-' + event.id}
-                        className="activity-row activity-link"
-                        disabled={!all.some((record) => record.id === event.point_id)}
-                        title={'Ir al medio ' + event.point_id}
-                        onClick={() => { resetFilters(); openItem(event.point_id); }}>
-                        <span className={'activity-icon ' + (event.type === 'documento' ? 'doc' : 'ok')} />
-                        <span className="activity-info">
+                <section className="home-v2-card home-v2-recent">
+                  <div className="home-v2-block-heading">
+                    <div className="home-v2-heading-left">
+                      <span className="home-v2-recent-clock"><ClipboardList size={19}/></span>
+                      <h2>Actividad reciente</h2>
+                    </div>
+                    <button type="button" className="home-v2-recent-more" onClick={() => nav('biblioteca')}>
+                      Ver biblioteca <ChevronRight size={15}/>
+                    </button>
+                  </div>
+                  <div className="home-v2-activity-list">
+                    {recentActivity.length ? recentActivity.slice(0, 3).map((event) => (
+                      <button
+                        type="button"
+                        key={event.type + '-' + event.id}
+                        className="home-v2-activity"
+                        disabled={!all.some((row) => row.id === event.point_id)}
+                        onClick={() => { resetFilters(); openItem(event.point_id); }}
+                        title={`Abrir ficha ${event.point_id}`}
+                      >
+                        <span className={`home-v2-activity-file ${event.type}`}><FileText size={21}/></span>
+                        <span className="home-v2-activity-details">
                           <strong>{event.title}</strong>
                           <small>{event.subtitle}</small>
-                          <small className="activity-date">{event.when}</small>
                         </span>
-                        <ChevronRight size={15} aria-hidden="true" />
+                        <span className="home-v2-activity-date">{event.when}</span>
+                        <ChevronRight size={16}/>
                       </button>
-                    )) : <div className="empty slim"><strong>Sin actividad reciente</strong></div>}
+                    )) : <div className="home-v2-empty">Todavía no hay actividad registrada.</div>}
                   </div>
                 </section>
-
-                <section className="side-widget promo-widget">
-                  <div>
-                    <h3>Biblioteca documental</h3>
-                    <p>Accede a normas, guías y referencias de apoyo.</p>
-                    <button className="action-secondary" onClick={() => nav('biblioteca')}>Ir a la biblioteca</button>
-                  </div>
-                </section>
-              </aside>
+              </div>
             </div>
           )}
 
