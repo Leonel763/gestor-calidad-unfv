@@ -723,87 +723,217 @@ setBusy(false);
 
           {quickUpload && (
             <div className="quick-upload-overlay" role="presentation"
-              onMouseDown={(event) => { if (event.target === event.currentTarget) setQuickUpload(false); }}>
-              <section className="quick-upload-dialog" role="dialog" aria-modal="true"
+              onMouseDown={(event) => { if (event.target === event.currentTarget) closeQuickUpload(); }}>
+              <section className="quick-upload-dialog quick-upload-wizard" role="dialog" aria-modal="true"
                 aria-labelledby="quick-upload-title">
                 <div className="quick-upload-heading">
-                  <span className="quick-upload-icon"><Upload size={21}/></span>
+                  <span className="quick-upload-icon">{quickUploadStep === 'done' ? <CheckCircle2 size={21}/> : <Upload size={21}/>}</span>
                   <div>
-                    <h2 id="quick-upload-title">Cargar documento</h2>
-                    <p>Indica a qué estándar y medio de logro pertenece el archivo.</p>
+                    <h2 id="quick-upload-title">{quickUploadStep === 'done' ? 'Documento registrado' : 'Cargar documento'}</h2>
+                    <p>{quickUploadStep === 'select'
+                      ? 'Primero selecciona el estándar y el medio de logro.'
+                      : quickUploadStep === 'attach'
+                      ? 'Adjunta el archivo y completa los datos de registro.'
+                      : 'La información se guardó correctamente.'}</p>
                   </div>
-                  <button type="button" className="quick-upload-close"
-                    onClick={() => setQuickUpload(false)} aria-label="Cerrar formulario"><X size={18}/></button>
+                  <button type="button" className="quick-upload-close" disabled={busy}
+                    onClick={closeQuickUpload} aria-label="Cerrar formulario"><X size={18}/></button>
                 </div>
-                <div className="quick-upload-fields">
-                  <label htmlFor="quick-standard">Estándar
-                    <select id="quick-standard" value={standard}
-                      onChange={(event) => {
-                        setStandard(Number(event.target.value));
-                        setQuickMedium('');
-                        setQuickMediaSearch('');
-                      }}>
-                      {standards.map((st) =>
-                        <option key={st.id} value={st.id}>E{String(st.id).padStart(2, '0')} — {st.title.slice(0, 66)}{st.title.length > 66 ? '…' : ''}</option>
+
+                <div className="quick-wizard-steps" aria-label="Progreso del registro">
+                  <span className={quickUploadStep === 'select' ? 'is-current' : 'is-completed'}>
+                    <b>1</b> Medio
+                  </span>
+                  <span className={quickUploadStep === 'attach' ? 'is-current' : quickUploadStep === 'done' ? 'is-completed' : ''}>
+                    <b>2</b> Documento
+                  </span>
+                  <span className={quickUploadStep === 'done' ? 'is-current' : ''}>
+                    <b>3</b> Confirmación
+                  </span>
+                </div>
+
+                {quickUploadStep === 'select' && (
+                  <div className="quick-upload-fields">
+                    <label htmlFor="quick-standard">Estándar
+                      <select id="quick-standard" value={standard}
+                        onChange={(event) => {
+                          setStandard(Number(event.target.value));
+                          setQuickMedium('');
+                          setQuickMediaSearch('');
+                          setQuickUploadError('');
+                        }}>
+                        {standards.map((st) =>
+                          <option key={st.id} value={st.id}>E{String(st.id).padStart(2, '0')} — {st.title.slice(0, 66)}{st.title.length > 66 ? '…' : ''}</option>
+                        )}
+                      </select>
+                    </label>
+                    <div className="quick-upload-media-picker">
+                      <label htmlFor="quick-media-search">Buscar medio de logro</label>
+                      <div className="quick-media-search">
+                        <Search size={17} aria-hidden="true"/>
+                        <input id="quick-media-search" type="search"
+                          placeholder="Código o palabra clave (ej.: 1.1.2, matriz)"
+                          value={quickMediaSearch}
+                          onChange={(event) => setQuickMediaSearch(event.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="quick-media-results-summary" role="status">
+                        <span>{visibleQuickMediaOptions.length} de {quickMediaOptions.length} medios</span>
+                        <span>Selecciona uno para continuar</span>
+                      </div>
+                      <div className="quick-media-results" aria-label="Resultados de medios de logro">
+                        {visibleQuickMediaOptions.length ? visibleQuickMediaOptions.map((option) => (
+                          <button key={option.id} type="button"
+                            className={quickMedium === option.id ? 'quick-media-result is-selected' : 'quick-media-result'}
+                            aria-pressed={quickMedium === option.id}
+                            onClick={() => { setQuickMedium(option.id); setQuickUploadError(''); }}
+                            title={option.id + ' — ' + option.description}>
+                            <span className="quick-media-result-code">{option.id}</span>
+                            <span className="quick-media-result-text">
+                              <strong>{option.description}</strong>
+                              <small>Punto {option.point} · {option.type}</small>
+                            </span>
+                            {quickMedium === option.id
+                              ? <CheckCircle2 size={18} color="#19835b" aria-hidden="true"/>
+                              : <ChevronRight size={16} aria-hidden="true"/>}
+                          </button>
+                        )) : (
+                          <div className="quick-media-no-results">
+                            No hay medios que coincidan. Prueba con el código o una palabra de la descripción.
+                          </div>
+                        )}
+                      </div>
+                      {selectedQuickMedia && (
+                        <p className="quick-media-selected" role="status">
+                          <CheckCircle2 size={15} aria-hidden="true"/>
+                          Seleccionado: <strong>{selectedQuickMedia.id}</strong> — {selectedQuickMedia.type}
+                        </p>
                       )}
-                    </select>
-                  </label>
-                  <div className="quick-upload-media-picker">
-                    <label htmlFor="quick-media-search">Buscar medio de logro</label>
-                    <div className="quick-media-search">
-                      <Search size={17} aria-hidden="true"/>
-                      <input
-                        id="quick-media-search"
-                        type="search"
-                        placeholder="Código o palabra clave (ej.: 1.1.2, matriz)"
-                        value={quickMediaSearch}
-                        onChange={(event) => setQuickMediaSearch(event.target.value)}
-                        autoComplete="off"
-                      />
                     </div>
-                    <div className="quick-media-results-summary" role="status">
-                      <span>{visibleQuickMediaOptions.length} de {quickMediaOptions.length} medios</span>
-                      <span>Selecciona uno para continuar</span>
+                  </div>
+                )}
+
+                {quickUploadStep === 'attach' && (
+                  <div className="quick-upload-attach">
+                    <div className="quick-selected-medium">
+                      <span className="quick-selected-medium-icon"><FileText size={19}/></span>
+                      <div>
+                        <small>Medio de logro seleccionado</small>
+                        <strong>{quickMedium} · {selectedQuickMedia?.description || 'Documento'}</strong>
+                      </div>
+                      <button type="button" disabled={busy} onClick={() => setQuickUploadStep('select')}>Cambiar</button>
                     </div>
-                    <div className="quick-media-results" aria-label="Resultados de medios de logro">
-                      {visibleQuickMediaOptions.length ? visibleQuickMediaOptions.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          className={quickMedium === option.id ? 'quick-media-result is-selected' : 'quick-media-result'}
-                          aria-pressed={quickMedium === option.id}
-                          onClick={() => setQuickMedium(option.id)}
-                          title={option.id + ' — ' + option.description}
-                        >
-                          <span className="quick-media-result-code">{option.id}</span>
-                          <span className="quick-media-result-text">
-                            <strong>{option.description}</strong>
-                            <small>Punto {option.point} · {option.type}</small>
-                          </span>
-                          {quickMedium === option.id
-                            ? <CheckCircle2 size={18} color="#19835b" aria-hidden="true"/>
-                            : <ChevronRight size={16} aria-hidden="true"/>}
-                        </button>
-                      )) : (
-                        <div className="quick-media-no-results">
-                          No hay medios que coincidan. Prueba con el código o una palabra de la descripción.
+                    <div className="quick-attach-fields">
+                      <label className="quick-dropzone" htmlFor="quick-upload-files"
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          if (!busy) checkQuickUploadFiles(Array.from(event.dataTransfer.files));
+                        }}>
+                        <Upload size={24}/>
+                        <strong>Arrastra archivos o haz clic para seleccionarlos</strong>
+                        <small>PDF, Word, Excel o imágenes · Máximo 15 MB por archivo</small>
+                        <span>Seleccionar archivos</span>
+                        <input ref={quickFileInput} id="quick-upload-files" type="file" multiple
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                          disabled={busy} onChange={(event) => {
+                            checkQuickUploadFiles(Array.from(event.target.files || []));
+                            event.target.value = '';
+                          }}/>
+                      </label>
+                      {files.length > 0 && (
+                        <div className="quick-attached-list" aria-label="Archivos preparados para subir">
+                          {files.map((file,index) => (
+                            <div key={file.name + '-' + file.size + '-' + file.lastModified}>
+                              <FileText size={17}/>
+                              <span title={file.name}>{file.name}</span>
+                              <small>{(file.size / 1024 / 1024).toFixed(2)} MB</small>
+                              <button type="button" disabled={busy} aria-label={'Quitar ' + file.name}
+                                onClick={() => setFiles((current) => current.filter((_,i) => i !== index))}>
+                                <X size={15}/>
+                              </button>
+                            </div>
+                          ))}
                         </div>
                       )}
+                      <label htmlFor="quick-upload-status">Estado del medio <b>*</b>
+                        <select id="quick-upload-status" value={uploadStatus} disabled={busy}
+                          onChange={(event) => setUploadStatus(event.target.value as Exclude<Status,'pendiente'> | '')}>
+                          <option value="">Selecciona el estado...</option>
+                          <option value="completo">Completo</option>
+                          <option value="en_proceso">Con datos simulados</option>
+                          <option value="complementar">Por complementar</option>
+                        </select>
+                      </label>
+                      <div className="quick-attach-two-cols">
+                        <label htmlFor="quick-upload-uploader">Colaborador (opcional)
+                          <input id="quick-upload-uploader" value={uploader} disabled={busy}
+                            onChange={(event) => setUploader(event.target.value)} placeholder="Nombre o área"/>
+                        </label>
+                        <label htmlFor="quick-upload-notes">Observación (opcional)
+                          <input id="quick-upload-notes" value={notes} disabled={busy}
+                            onChange={(event) => setNotes(event.target.value)} placeholder="Detalle del documento"/>
+                        </label>
+                      </div>
                     </div>
-                    {selectedQuickMedia && (
-                      <p className="quick-media-selected" role="status">
-                        <CheckCircle2 size={15} aria-hidden="true"/>
-                        Seleccionado: <strong>{selectedQuickMedia.id}</strong> — {selectedQuickMedia.type}
-                      </p>
-                    )}
                   </div>
-                </div>
+                )}
+
+                {quickUploadStep === 'done' && (
+                  <div className="quick-upload-success" role="status">
+                    <CheckCircle2 size={48}/>
+                    <h3>¡Registro completado!</h3>
+                    <p>{quickSavedNames.length} documento(s) registrado(s) en el medio <strong>{quickMedium}</strong>.</p>
+                    <div className="quick-success-files">
+                      {quickSavedNames.map((name,index) => (
+                        <div key={name + index}><FileText size={15}/><span>{name}</span></div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {quickUploadError && <div className="quick-upload-error" role="alert">
+                  <CircleAlert size={16}/><span>{quickUploadError}</span>
+                </div>}
+                {quickUploadStep !== 'done' && !sb && (
+                  <div className="quick-upload-error" role="alert">No hay conexión con Supabase para cargar documentos.</div>
+                )}
+
                 <div className="quick-upload-actions">
-                  <button type="button" className="quick-upload-cancel" onClick={() => setQuickUpload(false)}>Cancelar</button>
-                  <button type="button" className="quick-upload-continue" disabled={!quickMedium}
-                    onClick={() => openItem(quickMedium, true)}>
-                    Continuar a subir <ChevronRight size={16}/>
-                  </button>
+                  {quickUploadStep === 'select' && (
+                    <>
+                      <button type="button" className="quick-upload-cancel" onClick={closeQuickUpload}>Cancelar</button>
+                      <button type="button" className="quick-upload-continue" disabled={!quickMedium || !sb}
+                        onClick={() => { setQuickUploadStep('attach'); setQuickUploadError(''); }}>
+                        Continuar <ChevronRight size={16}/>
+                      </button>
+                    </>
+                  )}
+                  {quickUploadStep === 'attach' && (
+                    <>
+                      <button type="button" disabled={busy} className="quick-upload-cancel" onClick={() => setQuickUploadStep('select')}>
+                        <ArrowLeft size={15}/> Volver
+                      </button>
+                      <button type="button" className="quick-upload-continue"
+                        disabled={busy || !files.length || !uploadStatus || !sb}
+                        onClick={() => void upload()}>
+                        <Upload size={16}/> {busy ? 'Guardando documentos...' : 'Guardar documentos'}
+                      </button>
+                    </>
+                  )}
+                  {quickUploadStep === 'done' && (
+                    <>
+                      <button type="button" className="quick-upload-cancel" onClick={() => {
+                        setQuickUploadStep('select');
+                        setFiles([]); setQuickMedium(''); setQuickMediaSearch('');
+                        setUploadStatus(''); setNotes(''); setUploader(''); setQuickSavedNames([]);
+                      }}>Cargar otro documento</button>
+                      <button type="button" className="quick-upload-continue" onClick={closeQuickUpload}>
+                        Finalizar <CheckCircle2 size={16}/>
+                      </button>
+                    </>
+                  )}
                 </div>
               </section>
             </div>
