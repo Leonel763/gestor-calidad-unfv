@@ -73,6 +73,28 @@ const STATUS_META: Record<Status, { name: string; color: string }> = {
   completo: { name: 'Completo', color: 'green' },
 };
 
+
+type VisualSummaryKey = 'completo' | 'parcial' | 'complementar' | 'simulado' | 'pendiente';
+const VISUAL_SUMMARY_META: Record<VisualSummaryKey, { label: string; shortLabel: string }> = {
+  completo: { label: 'Completo', shortLabel: 'Completo' },
+  parcial: { label: 'En avance', shortLabel: 'En avance' },
+  complementar: { label: 'Por complementar', shortLabel: 'Complementar' },
+  simulado: { label: 'Con datos simulados', shortLabel: 'Simulados' },
+  pendiente: { label: 'Pendiente', shortLabel: 'Pendiente' },
+};
+
+// Estado visual calculado a partir de los medios, nunca se guarda en la base de datos.
+function summarizeStatuses(statuses: Status[]) {
+  const total = statuses.length;
+  const completed = statuses.filter((status) => status === 'completo').length;
+  let kind: VisualSummaryKey = 'pendiente';
+  if (total > 0 && completed === total) kind = 'completo';
+  else if (statuses.includes('complementar')) kind = 'complementar';
+  else if (statuses.includes('en_proceso')) kind = 'simulado';
+  else if (completed > 0) kind = 'parcial';
+  return { kind, total, completed, percent: total ? Math.round(completed / total * 100) : 0, ...VISUAL_SUMMARY_META[kind] };
+}
+
 const EXISTENCE_OPTIONS = [
   { value: 'todos', label: 'Todos' },
   { value: 'existente', label: 'Existentes' },
@@ -240,6 +262,7 @@ export default function Home() {
   return tracking.find((t) => t.point_id === id)?.status || 'pendiente';
 };
   const getDocs = (id: string) => documents.filter((d) => d.point_id === id);
+  const groupSummary = (items: Item[]) => summarizeStatuses(items.map((it) => getStatus(it.id)));
 
   const complete = all.filter((a) => getStatus(a.id) === 'completo').length;
   const simulated = all.filter((a) => getStatus(a.id) === 'en_proceso').length;
@@ -250,6 +273,7 @@ export default function Home() {
   const generalPercent = Math.round((complete / Math.max(all.length, 1)) * 100);
   const selectedStandard = standards.find((s) => s.id === standard) || standards[0];
   const selected = all.find((a) => a.id === item) || null;
+  const selectedStandardSummary = groupSummary(selectedStandard.points.flatMap((pt) => pt.items));
 
   const filteredMatrixItems = useMemo(() => {
     return all.filter((record) => {
@@ -794,19 +818,26 @@ setBusy(false);
                     <span>{standards.length} disponibles</span>
                   </header>
                   <div className="quiet-standard-list">
-                    {standards.map((st) => (
-                      <button type="button" key={st.id}
-                        className={standard === st.id ? 'quiet-standard-item is-current' : 'quiet-standard-item'}
-                        onClick={() => openStd(st.id)}
-                        aria-current={standard === st.id ? 'page' : undefined}>
-                        <span className="quiet-standard-code">{st.id}</span>
-                        <span className="quiet-standard-copy">
-                          <strong>{st.title}</strong>
-                          <small>{st.points.length} puntos</small>
-                        </span>
-                        <ChevronRight size={15} aria-hidden="true"/>
-                      </button>
-                    ))}
+                    {standards.map((st) => {
+                      const summary = groupSummary(st.points.flatMap((pt) => pt.items));
+                      return (
+                        <button type="button" key={st.id}
+                          className={standard === st.id ? 'quiet-standard-item is-current' : 'quiet-standard-item'}
+                          onClick={() => openStd(st.id)}
+                          aria-current={standard === st.id ? 'page' : undefined}
+                          title={summary.label + ': ' + summary.completed + ' de ' + summary.total + ' medios completos'}>
+                          <span className="quiet-standard-code">{st.id}</span>
+                          <span className="quiet-standard-copy">
+                            <strong>{st.title}</strong>
+                            <span className="quiet-standard-meta">
+                              <small>{st.points.length} puntos</small>
+                              <span className={'quiet-status-dot-label status-' + summary.kind}>{summary.shortLabel}</span>
+                            </span>
+                          </span>
+                          <ChevronRight size={15} aria-hidden="true"/>
+                        </button>
+                      );
+                    })}
                   </div>
                 </aside>
                 <section className="quiet-content" aria-label="Puntos de evaluación">
@@ -815,12 +846,30 @@ setBusy(false);
                     <div className="quiet-standard-heading">
                       <span className="quiet-eyebrow">ESTÁNDAR {selectedStandard.id}</span>
                       <h2>{selectedStandard.title}</h2>
-                      <p>{selectedStandard.points.length} puntos de evaluación <span aria-hidden="true">·</span> {selectedStandard.points.flatMap((pt) => pt.items).length} medios de logro</p>
+                      <p>{selectedStandard.points.length} puntos de evaluación <span aria-hidden="true">·</span> {selectedStandardSummary.total} medios de logro</p>
+                    </div>
+                    <div className="quiet-standard-progress" aria-label={selectedStandardSummary.completed + ' de ' + selectedStandardSummary.total + ' medios completos'}>
+                      <div className="quiet-standard-progress-top">
+                        <span className={'quiet-status-badge status-' + selectedStandardSummary.kind}>{selectedStandardSummary.label}</span>
+                        <strong>{selectedStandardSummary.percent}%</strong>
+                      </div>
+                      <div className="quiet-progress-track"><span style={{ width: selectedStandardSummary.percent + '%' }} /></div>
+                      <small>{selectedStandardSummary.completed} de {selectedStandardSummary.total} medios completos</small>
                     </div>
                     <button className="quiet-add-evidence" type="button" onClick={startQuickUpload}>
                       <Upload size={16}/> Registrar evidencia
                     </button>
                   </header>
+                  <details className="quiet-status-help">
+                    <summary>¿Cómo se interpretan los estados?</summary>
+                    <div className="quiet-status-help-list">
+                      <span><b className="quiet-status-badge status-completo">Completo</b> Todos los medios completados</span>
+                      <span><b className="quiet-status-badge status-parcial">En avance</b> Algunos medios completos</span>
+                      <span><b className="quiet-status-badge status-complementar">Por complementar</b> Hay medios que requieren completar información</span>
+                      <span><b className="quiet-status-badge status-simulado">Con datos simulados</b> Hay medios registrados con datos simulados</span>
+                      <span><b className="quiet-status-badge status-pendiente">Pendiente</b> Ningún medio completo o con otro estado</span>
+                    </div>
+                  </details>
                   <div className="quiet-points-header">
                     <div>
                       <h3>Puntos de evaluación</h3>
@@ -856,10 +905,9 @@ setBusy(false);
                     {visiblePoints.length ? visiblePoints.map((pt) => {
                       const isExpanded = point === pt.id || Boolean(query);
                       const fullItems = pt.items;
-                      const completed = fullItems.filter((it) => getStatus(it.id) === 'completo').length;
-                      const totalDocs = fullItems.reduce((total, it) => total + getDocs(it.id).length, 0);
+                      const summary = groupSummary(fullItems);
                       return (
-                        <section className={isExpanded ? 'quiet-point-card is-expanded' : 'quiet-point-card'} key={pt.id}>
+                        <section className={'quiet-point-card status-' + summary.kind + (isExpanded ? ' is-expanded' : '')} key={pt.id}>
                           <button type="button" className="quiet-point-toggle"
                             aria-expanded={isExpanded}
                             aria-controls={'quiet-point-' + pt.id.replaceAll('.', '-')}
@@ -870,9 +918,11 @@ setBusy(false);
                               <small>{pt.criterion}</small>
                             </span>
                             <span className="quiet-point-summary">
-                              <span>{fullItems.length} medios</span>
-                              <span>{totalDocs} archivos</span>
-                              <span>{completed}/{fullItems.length} completos</span>
+                              <span className={'quiet-status-badge status-' + summary.kind}>{summary.label}</span>
+                              <span className="quiet-point-progress">
+                                <span>{summary.completed}/{summary.total} completos</span>
+                                <span className="quiet-progress-track"><span style={{ width: summary.percent + '%' }}/></span>
+                              </span>
                             </span>
                             <ChevronRight className="quiet-point-chevron" size={18} aria-hidden="true"/>
                           </button>
@@ -890,7 +940,7 @@ setBusy(false);
                               </div>
                               <div className="quiet-media-list">
                                 {pt.visibleItems.map((it) => (
-                                  <button type="button" className="quiet-media-item" key={it.id}
+                                  <button type="button" className={'quiet-media-item status-' + getStatus(it.id)} key={it.id}
                                     onClick={() => openItem(it.id)}
                                     title={'Abrir ficha del medio ' + it.id}>
                                     <span className="quiet-media-code">{it.id}</span>
@@ -898,7 +948,7 @@ setBusy(false);
                                       <strong>{it.text?.trim() || normalizeType(it.type)}</strong>
                                       <small>{normalizeType(it.type)}</small>
                                     </span>
-                                    <span className={'chip ' + STATUS_META[getStatus(it.id)].color}>{STATUS_META[getStatus(it.id)].name}</span>
+                                    <span className={'quiet-status-badge status-' + getStatus(it.id)}>{STATUS_META[getStatus(it.id)].name}</span>
                                     <span className="quiet-media-count"><Paperclip size={14}/>{getDocs(it.id).length} archivo(s)</span>
                                     <ChevronRight size={17} className="quiet-media-chevron" aria-hidden="true"/>
                                   </button>
