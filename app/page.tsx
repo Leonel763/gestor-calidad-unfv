@@ -169,6 +169,7 @@ export default function Home() {
   const [libraryPage, setLibraryPage] = useState(1);
   const [quickUpload, setQuickUpload] = useState(false);
   const [quickMedium, setQuickMedium] = useState('');
+  const [explorerStatus, setExplorerStatus] = useState<'todos' | VisualSummaryKey>('todos');
   const [tracking, setTracking] = useState<Tracking[]>([]);
   const [documents, setDocuments] = useState<Evidence[]>([]);
   const [alert, setAlert] = useState<Notice | null>(null);
@@ -346,6 +347,7 @@ export default function Home() {
   }, [documents, tracking]);
 
   function resetFilters() {
+    setExplorerStatus('todos');
     setQuery('');
     setStatusFilter('todos');
     setExistenceFilter('todos');
@@ -827,165 +829,188 @@ setBusy(false);
               )}
 
 
-              <div className="quiet-page-title">
+              <div className="tri-intro">
                 <div>
-                  <span className="quiet-eyebrow">GESTIÓN DE CALIDAD · FACULTAD DE DERECHO</span>
+                  <span className="tri-kicker">GESTIÓN DE CALIDAD · FACULTAD DE DERECHO</span>
                   <h1>Explorador de estándares</h1>
-                  <p>Consulta los puntos de evaluación y sus evidencias de manera sencilla.</p>
+                  <p>Consulta el avance de cada estándar y accede a sus evidencias.</p>
                 </div>
-                <span className="quiet-count">{standards.length} estándares</span>
+                <span className="tri-overview-count"><Layers3 size={16}/>{standards.length} estándares</span>
               </div>
-              <div className="quiet-workspace">
-                <aside className="quiet-sidebar" aria-label="Seleccionar estándar">
-                  <header className="quiet-sidebar-header">
-                    <h2>Estándares</h2>
-                    <span>{standards.length} disponibles</span>
+              <div className="tri-overview-bar">
+                <div><Layers3 size={19}/><strong>{standards.length}</strong><span>Estándares</span></div>
+                <div><ClipboardList size={19}/><strong>{allPoints}</strong><span>Puntos</span></div>
+                <div><FileText size={19}/><strong>{all.length}</strong><span>Medios de logro</span></div>
+                <div className="tri-overview-progress">
+                  <span>Avance general</span>
+                  <strong>{generalPercent}%</strong>
+                  <span className="tri-progress"><span style={{ width: generalPercent + '%' }} /></span>
+                  <small>{complete} de {all.length} completados</small>
+                </div>
+              </div>
+              <div className="tri-workspace">
+                <aside className="tri-filters" aria-label="Filtros del explorador">
+                  <div className="tri-panel-title">
+                    <h2><Filter size={17}/> Filtros</h2>
+                    <button type="button" onClick={resetFilters}>Limpiar</button>
+                  </div>
+                  <fieldset className="tri-filter-options">
+                    <legend>Estado del estándar</legend>
+                    {([
+                      { value:'todos',label:'Todos' },
+                      { value:'completo',label:'Completo' },
+                      { value:'parcial',label:'En avance' },
+                      { value:'complementar',label:'Por complementar' },
+                      { value:'simulado',label:'Con datos simulados' },
+                      { value:'pendiente',label:'Pendiente' },
+                    ] as const).map((option) => {
+                      const count = option.value === 'todos' ? standards.length : standards.filter((st) => groupSummary(st.points.flatMap((pt) => pt.items)).kind === option.value).length;
+                      return (
+                        <label key={option.value} className={explorerStatus === option.value ? 'tri-filter-item is-checked' : 'tri-filter-item'}>
+                          <input type="radio" name="tri-standard-status" checked={explorerStatus === option.value}
+                            onChange={() => setExplorerStatus(option.value)}/>
+                          <span>{option.label}</span><small>{count}</small>
+                        </label>
+                      );
+                    })}
+                  </fieldset>
+                  <details className="tri-extra-filters">
+                    <summary>Más filtros <ChevronRight size={14}/></summary>
+                    <div className="tri-extra-fields">
+                      <label>Estado del medio
+                        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}>
+                          <option value="todos">Todos</option>
+                          {Object.entries(STATUS_META).map(([key,meta]) => <option key={key} value={key}>{meta.name}</option>)}
+                        </select>
+                      </label>
+                      <label>Existencia en matriz
+                        <select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>
+                          {EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
+                      </label>
+                      <label>Tipo de documento
+                        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                          {TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                  </details>
+                </aside>
+                <section className="tri-standards" aria-label="Lista de estándares">
+                  <header className="tri-panel-title">
+                    <h2>Estándares <span>({standards.length})</span></h2>
                   </header>
-                  <div className="quiet-standard-list">
-                    {standards.map((st) => {
+                  <div className="tri-standard-list">
+                    {standards.filter((st) => {
+                      const summary = groupSummary(st.points.flatMap((pt) => pt.items));
+                      if (explorerStatus !== 'todos' && summary.kind !== explorerStatus) return false;
+                      if (query.trim() || statusFilter !== 'todos' || existenceFilter !== 'todos' || typeFilter !== 'Todos')
+                        return st.points.some((pt) => pt.items.some((it) => filteredIds.has(it.id)));
+                      return true;
+                    }).map((st) => {
                       const summary = groupSummary(st.points.flatMap((pt) => pt.items));
                       return (
                         <button type="button" key={st.id}
-                          className={standard === st.id ? 'quiet-standard-item is-current' : 'quiet-standard-item'}
+                          className={standard === st.id ? 'tri-standard-item is-active' : 'tri-standard-item'}
                           onClick={() => openStd(st.id)}
-                          aria-current={standard === st.id ? 'page' : undefined}
-                          title={summary.label + ': ' + summary.completed + ' de ' + summary.total + ' medios completos'}>
-                          <span className="quiet-standard-code">{st.id}</span>
-                          <span className="quiet-standard-copy">
+                          aria-current={standard === st.id ? 'true' : undefined}
+                          title={st.title}>
+                          <span className="tri-standard-code">E{String(st.id).padStart(2,'0')}</span>
+                          <span className="tri-standard-copy">
                             <strong>{st.title}</strong>
-                            <span className="quiet-standard-meta">
-                              <small>{st.points.length} puntos</small>
-                              <span className={'quiet-status-dot-label status-' + summary.kind}>{summary.shortLabel}</span>
-                            </span>
+                            <span className="tri-standard-progressline"><span style={{width: summary.percent + '%'}}/></span>
+                            <small>{summary.completed}/{summary.total} medios</small>
                           </span>
-                          <ChevronRight size={15} aria-hidden="true"/>
+                          <span className="tri-standard-right">
+                            <span className={'tri-standard-state state-' + summary.kind}>{summary.percent}%</span>
+                            <ChevronRight size={16}/>
+                          </span>
                         </button>
                       );
                     })}
-                  </div>
-                </aside>
-                <section className="quiet-content" aria-label="Puntos de evaluación">
-                  <header className="quiet-standard-header">
-                    <div className="quiet-standard-symbol">{'E' + selectedStandard.id}</div>
-                    <div className="quiet-standard-heading">
-                      <span className="quiet-eyebrow">ESTÁNDAR {selectedStandard.id}</span>
-                      <h2>{selectedStandard.title}</h2>
-                      <p>{selectedStandard.points.length} puntos de evaluación <span aria-hidden="true">·</span> {selectedStandardSummary.total} medios de logro</p>
-                    </div>
-                    <div className="quiet-standard-progress" aria-label={selectedStandardSummary.completed + ' de ' + selectedStandardSummary.total + ' medios completos'}>
-                      <div className="quiet-standard-progress-top">
-                        <span className={'quiet-status-badge status-' + selectedStandardSummary.kind}>{selectedStandardSummary.label}</span>
-                        <strong>{selectedStandardSummary.percent}%</strong>
-                      </div>
-                      <div className="quiet-progress-track"><span style={{ width: selectedStandardSummary.percent + '%' }} /></div>
-                      <small>{selectedStandardSummary.completed} de {selectedStandardSummary.total} medios completos</small>
-                    </div>
-                    <button className="quiet-add-evidence" type="button" onClick={startQuickUpload}>
-                      <Upload size={16}/> Registrar evidencia
-                    </button>
-                  </header>
-                  <details className="quiet-status-help">
-                    <summary>¿Cómo se interpretan los estados?</summary>
-                    <div className="quiet-status-help-list">
-                      <span><b className="quiet-status-badge status-completo">Completo</b> Todos los medios completados</span>
-                      <span><b className="quiet-status-badge status-parcial">En avance</b> Algunos medios completos</span>
-                      <span><b className="quiet-status-badge status-complementar">Por complementar</b> Hay medios que requieren completar información</span>
-                      <span><b className="quiet-status-badge status-simulado">Con datos simulados</b> Hay medios registrados con datos simulados</span>
-                      <span><b className="quiet-status-badge status-pendiente">Pendiente</b> Ningún medio completo o con otro estado</span>
-                    </div>
-                  </details>
-                  <div className="quiet-points-header">
-                    <div>
-                      <h3>Puntos de evaluación</h3>
-                      <p>Selecciona un punto para consultar los medios y documentos.</p>
-                    </div>
-                    <details className="quiet-search-filters">
-                      <summary><Filter size={15}/> Buscar y filtrar</summary>
-                      <div className="quiet-filter-panel">
-                        <label>Buscar
-                          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Código, medio o documento"/>
-                        </label>
-                        <label>Estado
-                          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}>
-                            <option value="todos">Todos los estados</option>
-                            {Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}
-                          </select>
-                        </label>
-                        <label>Existencia
-                          <select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>
-                            {EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                          </select>
-                        </label>
-                        <label>Tipo documental
-                          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                            {TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                          </select>
-                        </label>
+                    {!standards.some((st) => {
+                      const summary = groupSummary(st.points.flatMap((pt) => pt.items));
+                      return (explorerStatus === 'todos' || summary.kind === explorerStatus) &&
+                        (!query.trim() && statusFilter === 'todos' && existenceFilter === 'todos' && typeFilter === 'Todos' ||
+                          st.points.some((pt) => pt.items.some((it) => filteredIds.has(it.id))));
+                    }) && (
+                      <div className="tri-no-results">No hay estándares con esos filtros.
                         <button type="button" onClick={resetFilters}>Limpiar filtros</button>
                       </div>
+                    )}
+                  </div>
+                </section>
+                <section className="tri-details" aria-label="Detalle del estándar seleccionado">
+                  <div className="tri-selected-header">
+                    <div className="tri-selected-code">E{String(selectedStandard.id).padStart(2,'0')}</div>
+                    <div className="tri-selected-heading">
+                      <span className="tri-kicker">ESTÁNDAR {selectedStandard.id}</span>
+                      <h2>{selectedStandard.title}</h2>
+                      <p>{selectedStandard.points.length} puntos de evaluación · {selectedStandardSummary.total} medios de logro</p>
+                    </div>
+                    <div className="tri-selected-progress">
+                      <span className={'quiet-status-badge status-' + selectedStandardSummary.kind}>{selectedStandardSummary.label}</span>
+                      <strong>{selectedStandardSummary.percent}%</strong>
+                      <div className="tri-progress"><span style={{width:selectedStandardSummary.percent+'%'}}/></div>
+                    </div>
+                    <button type="button" className="tri-add-button" onClick={startQuickUpload}><Upload size={16}/> Registrar evidencia</button>
+                  </div>
+                  <div className="tri-points-head">
+                    <div><h3>Puntos de evaluación</h3><p>Selecciona un punto para ver sus medios de logro.</p></div>
+                    <details className="tri-standard-info">
+                      <summary><FileText size={15}/> Información del estándar</summary>
+                      <div><strong>{selectedStandard.title}</strong><p>{selectedStandard.points.length} puntos de evaluación y {selectedStandardSummary.total} medios registrados en la matriz.</p></div>
                     </details>
                   </div>
-                  <div className="quiet-points-list">
+                  <div className="tri-points-list">
                     {visiblePoints.length ? visiblePoints.map((pt) => {
-                      const isExpanded = point === pt.id || Boolean(query);
-                      const fullItems = pt.items;
-                      const summary = groupSummary(fullItems);
+                      const summary = groupSummary(pt.items);
+                      const expanded = point === pt.id || Boolean(query.trim());
                       return (
-                        <section className={'quiet-point-card status-' + summary.kind + (isExpanded ? ' is-expanded' : '')} key={pt.id}>
-                          <button type="button" className="quiet-point-toggle"
-                            aria-expanded={isExpanded}
-                            aria-controls={'quiet-point-' + pt.id.replaceAll('.', '-')}
+                        <article className={expanded ? 'tri-point is-open' : 'tri-point'} key={pt.id}>
+                          <button type="button" className="tri-point-head"
+                            aria-expanded={expanded}
                             onClick={() => setPoint(point === pt.id ? null : pt.id)}>
-                            <span className="quiet-point-code">{pt.id}</span>
-                            <span className="quiet-point-copy">
-                              <strong>{'Punto ' + pt.id}</strong>
-                              <small>{pt.criterion}</small>
+                            <span className="tri-point-code">{pt.id}</span>
+                            <span className="tri-point-name">
+                              <strong>Punto {pt.id}</strong>
+                              <small title={pt.criterion}>{pt.criterion}</small>
                             </span>
-                            <span className="quiet-point-summary">
-                              <span className={'quiet-status-badge status-' + summary.kind}>{summary.label}</span>
-                              <span className="quiet-point-progress">
-                                <span>{summary.completed}/{summary.total} completos</span>
-                                <span className="quiet-progress-track"><span style={{ width: summary.percent + '%' }}/></span>
-                              </span>
-                            </span>
-                            <ChevronRight className="quiet-point-chevron" size={18} aria-hidden="true"/>
+                            <span className="tri-point-total">{summary.completed}/{summary.total} medios</span>
+                            <span className={'quiet-status-badge status-' + summary.kind}>{summary.label}</span>
+                            <ChevronRight className="tri-point-arrow" size={16}/>
                           </button>
-                          {isExpanded && (
-                            <div className="quiet-point-body" id={'quiet-point-' + pt.id.replaceAll('.', '-')}>
-                              <div className="quiet-point-tools">
-                                <h4>Medios de logro <span>({pt.visibleItems.length})</span></h4>
-                                <details className="quiet-criterion">
-                                  <summary><FileText size={15}/> Información del punto</summary>
-                                  <div className="quiet-criterion-text">
-                                    <strong>Criterio de evaluación</strong>
-                                    <p>{pt.criterion}</p>
-                                  </div>
+                          {expanded && (
+                            <div className="tri-point-body">
+                              <div className="tri-point-toolbar">
+                                <h4>Medios de logro ({pt.visibleItems.length})</h4>
+                                <details>
+                                  <summary><FileText size={14}/> Criterio completo</summary>
+                                  <p>{pt.criterion}</p>
                                 </details>
                               </div>
-                              <div className="quiet-media-list">
+                              <div className="tri-media-list">
                                 {pt.visibleItems.map((it) => (
-                                  <button type="button" className={'quiet-media-item status-' + getStatus(it.id)} key={it.id}
-                                    onClick={() => openItem(it.id)}
-                                    title={'Abrir ficha del medio ' + it.id}>
-                                    <span className="quiet-media-code">{it.id}</span>
-                                    <span className="quiet-media-copy">
-                                      <strong>{it.text?.trim() || normalizeType(it.type)}</strong>
+                                  <button type="button" className="tri-media-item" key={it.id}
+                                    onClick={() => openItem(it.id)} title={'Ver ficha ' + it.id}>
+                                    <span className="tri-media-code">{it.id}</span>
+                                    <span className="tri-media-description">
+                                      <strong title={it.text || normalizeType(it.type)}>{it.text?.trim() || normalizeType(it.type)}</strong>
                                       <small>{normalizeType(it.type)}</small>
                                     </span>
                                     <span className={'quiet-status-badge status-' + getStatus(it.id)}>{STATUS_META[getStatus(it.id)].name}</span>
-                                    <span className="quiet-media-count"><Paperclip size={14}/>{getDocs(it.id).length} archivo(s)</span>
-                                    <ChevronRight size={17} className="quiet-media-chevron" aria-hidden="true"/>
+                                    <span className="tri-media-files"><Paperclip size={14}/>{getDocs(it.id).length}</span>
+                                    <span className="tri-media-open">Ver ficha <ChevronRight size={15}/></span>
                                   </button>
                                 ))}
                               </div>
                             </div>
                           )}
-                        </section>
+                        </article>
                       );
                     }) : (
-                      <div className="quiet-empty">
-                        No encontramos puntos con esos filtros.
-                        <button type="button" onClick={resetFilters}>Mostrar todos los puntos</button>
+                      <div className="tri-no-results">No hay puntos coincidentes con la búsqueda.
+                        <button type="button" onClick={resetFilters}>Limpiar filtros</button>
                       </div>
                     )}
                   </div>
