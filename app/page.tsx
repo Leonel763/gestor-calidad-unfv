@@ -596,7 +596,7 @@ setBusy(false);
               </button>
             ))}
           </nav>
-          <label className="simple-header-search">
+          <div className="simple-header-search">
             <Search size={17} aria-hidden="true" />
             <input
               value={query}
@@ -615,7 +615,7 @@ setBusy(false);
             {query && (
               <button type="button" className="simple-search-clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15}/></button>
             )}
-          </label>
+          </div>
         </header>
 
         <div className="container page-modern">
