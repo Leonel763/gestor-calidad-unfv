@@ -802,7 +802,7 @@ setBusy(false);
                                 {STATUS_META[option.status].name}
                               </span>
                               <span className={option.documentCount ? 'quick-media-docs has-docs' : 'quick-media-docs'}>
-                                <Paperclip size={12}/>{option.documentCount ? option.documentCount + ' archivo(s)' : 'Sin archivos'}
+                                <Paperclip size={12}/>{option.documentCount ? 'Documento: Completo · ' + option.documentCount + ' archivo(s)' : 'Documento: Pendiente'}
                               </span>
                             </span>
                             {quickMedium === option.id
