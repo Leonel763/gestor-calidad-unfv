@@ -1234,3 +1234,18 @@
 .quick-success-files>div:last-child{border-bottom:0}
 .quick-upload-actions button:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:600px){.quick-upload-wizard{padding:16px;max-height:calc(100dvh - 20px)}.quick-wizard-steps{gap:4px}.quick-wizard-steps>span{gap:4px;font-size:9px}.quick-wizard-steps b{width:20px;height:20px}.quick-attach-two-cols{grid-template-columns:1fr}.quick-dropzone{padding:17px 10px}.quick-upload-wizard .quick-upload-actions{flex-wrap:wrap}.quick-upload-wizard .quick-upload-actions>button{flex:1 1 100%}}
+
+
+/* El selector indica tanto el estado de seguimiento como la presencia de archivos */
+.quick-media-result-indicators{display:flex;flex:0 0 132px;align-items:flex-end;flex-direction:column;gap:5px;min-width:0}
+.quick-media-state{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:5px 8px;border-radius:99px;font-size:10px;font-weight:800;text-align:right;max-width:100%}
+.quick-media-state.state-completo{background:#e3f6e8;color:#147b4f}
+.quick-media-state.state-en_proceso{background:#f2ecff;color:#7757a4}
+.quick-media-state.state-complementar{background:#fff1dc;color:#9e671c}
+.quick-media-state.state-pendiente{background:#f0f2f4;color:#687886}
+.quick-media-docs{display:inline-flex;align-items:center;gap:4px;color:#82918c;font-size:10px}
+.quick-media-docs.has-docs{color:#20835d;font-weight:750}
+.quick-current-status{display:block;color:#628473;margin-top:5px;font-size:10px}
+.quick-current-status>b{color:#22684e}
+.quick-media-result-text{min-width:0}
+@media(max-width:500px){.quick-media-result-indicators{flex-basis:92px}.quick-media-state{font-size:9px;padding:5px 6px}.quick-media-docs{font-size:9px}.quick-media-result-text strong{-webkit-line-clamp:2}}
