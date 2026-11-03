@@ -169,6 +169,7 @@ export default function Home() {
   const [libraryPage, setLibraryPage] = useState(1);
   const [quickUpload, setQuickUpload] = useState(false);
   const [quickMedium, setQuickMedium] = useState('');
+  const [uploadFromMedia, setUploadFromMedia] = useState(false);
   const [explorerStatus, setExplorerStatus] = useState<'todos' | VisualSummaryKey>('todos');
   const [tracking, setTracking] = useState<Tracking[]>([]);
   const [documents, setDocuments] = useState<Evidence[]>([]);
@@ -378,6 +379,7 @@ export default function Home() {
   }
 
   function startQuickUpload() {
+    setUploadFromMedia(false);
     resetFilters();
     setSection('estandares');
     setPoint(null);
@@ -387,7 +389,7 @@ export default function Home() {
     dismissAlert();
   }
 
-  function openItem(code: string) {
+  function openItem(code: string, forUpload = false) {
     const record = all.find((row) => row.id === code);
     if (!record) return;
     setQuickUpload(false);
@@ -395,6 +397,7 @@ export default function Home() {
     setStandard(record.standard);
     setPoint(record.point);
     setItem(record.id);
+    setUploadFromMedia(forUpload);
     setFiles([]);
     setUploadStatus('');
     setUploader('');
@@ -567,6 +570,15 @@ setBusy(false);
           ? 'Biblioteca documental'
           : 'Seguimiento';
 
+  useEffect(() => {
+    if (!quickUpload) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setQuickUpload(false);
+    };
+    document.addEventListener('keydown', onEscape);
+    return () => document.removeEventListener('keydown', onEscape);
+  }, [quickUpload]);
+
   const menu = [
     { id: 'inicio', title: 'Inicio', icon: LayoutDashboard },
     { id: 'estandares', title: 'Estándares', icon: Layers3 },
@@ -618,9 +630,59 @@ setBusy(false);
               <button type="button" className="simple-search-clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15}/></button>
             )}
           </div>
+          <button type="button" className="header-upload-button" onClick={startQuickUpload}>
+            <Upload size={17} aria-hidden="true" />
+            <span>Cargar documento</span>
+          </button>
         </header>
 
         <div className="container page-modern">
+
+          {quickUpload && (
+            <div className="quick-upload-overlay" role="presentation"
+              onMouseDown={(event) => { if (event.target === event.currentTarget) setQuickUpload(false); }}>
+              <section className="quick-upload-dialog" role="dialog" aria-modal="true"
+                aria-labelledby="quick-upload-title">
+                <div className="quick-upload-heading">
+                  <span className="quick-upload-icon"><Upload size={21}/></span>
+                  <div>
+                    <h2 id="quick-upload-title">Cargar documento</h2>
+                    <p>Indica a qué estándar y medio de logro pertenece el archivo.</p>
+                  </div>
+                  <button type="button" className="quick-upload-close"
+                    onClick={() => setQuickUpload(false)} aria-label="Cerrar formulario"><X size={18}/></button>
+                </div>
+                <div className="quick-upload-fields">
+                  <label htmlFor="quick-standard">Estándar
+                    <select id="quick-standard" value={standard}
+                      onChange={(event) => { setStandard(Number(event.target.value)); setQuickMedium(''); }}>
+                      {standards.map((st) => <option key={st.id} value={st.id}>E{st.id} — {st.title}</option>)}
+                    </select>
+                  </label>
+                  <label htmlFor="quick-medium">Medio de logro
+                    <select id="quick-medium" value={quickMedium} onChange={(event) => setQuickMedium(event.target.value)}>
+                      <option value="">Selecciona un medio de logro</option>
+                      {selectedStandard.points.map((pt) => (
+                        <optgroup key={pt.id} label={`Punto ${pt.id}`}>
+                          {pt.items.map((it) => <option key={it.id} value={it.id}>
+                            {it.id} — {it.text || pt.criterion}
+                          </option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="quick-upload-actions">
+                  <button type="button" className="quick-upload-cancel" onClick={() => setQuickUpload(false)}>Cancelar</button>
+                  <button type="button" className="quick-upload-continue" disabled={!quickMedium}
+                    onClick={() => openItem(quickMedium, true)}>
+                    Continuar a subir <ChevronRight size={16}/>
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
+
           {alert && (
             <div className={`toast-notice ${alert.kind}`} role={alert.kind === 'error' ? 'alert' : 'status'} aria-live={alert.kind === 'error' ? 'assertive' : 'polite'}>
               <span className="toast-icon">{alert.kind === 'success' ? <CheckCircle2 size={20} /> : <CircleAlert size={20} />}</span>
@@ -793,42 +855,6 @@ setBusy(false);
 
           {section === 'estandares' && !selected && (
             <>
-              {quickUpload && (
-                <section className="evidence-card" style={{ marginBottom: 20, padding: 24 }}>
-                  <div className="evidence-card-title">
-                    <Upload size={20} />
-                    <h2>Registrar evidencia</h2>
-                  </div>
-                  <p>Selecciona el estándar y el medio de logro al que pertenece tu documento. Después podrás adjuntarlo y guardar su estado.</p>
-                  <div className="evidence-form-grid">
-                    <div className="evidence-field">
-                      <label htmlFor="quick-standard">Estándar</label>
-                      <select id="quick-standard" value={standard} onChange={(e) => { setStandard(Number(e.target.value)); setQuickMedium(''); }}>
-                        {standards.map((st) => <option key={st.id} value={st.id}>E{st.id} — {st.title}</option>)}
-                      </select>
-                    </div>
-                    <div className="evidence-field">
-                      <label htmlFor="quick-medium">Medio de logro</label>
-                      <select id="quick-medium" value={quickMedium} onChange={(e) => setQuickMedium(e.target.value)}>
-                        <option value="">Selecciona un medio de logro</option>
-                        {selectedStandard.points.map((pt) => (
-                          <optgroup key={pt.id} label={`Punto ${pt.id}`}>
-                            {pt.items.map((it) => <option key={it.id} value={it.id}>{it.id} — {it.text || pt.criterion}</option>)}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-                    <button className="action-cta" type="button" disabled={!quickMedium} onClick={() => openItem(quickMedium)}>
-                      <Upload size={18} /> Continuar a subir documento
-                    </button>
-                    <button className="action-secondary" type="button" onClick={() => setQuickUpload(false)}>Cancelar</button>
-                  </div>
-                </section>
-              )}
-
-
               <div className="tri-intro">
                 <div>
                   <span className="tri-kicker">GESTIÓN DE CALIDAD · FACULTAD DE DERECHO</span>
@@ -849,7 +875,13 @@ setBusy(false);
                 </div>
               </div>
               <div className="tri-workspace">
-                <aside className="tri-filters" aria-label="Filtros del explorador">
+                <section className="tri-standards" aria-label="Lista de estándares">
+                  <header className="tri-panel-title">
+                    <h2>Estándares <span>({standards.length})</span></h2>
+                  </header>
+                  <details className="tri-standards-filter-dropdown">
+                    <summary><Filter size={15}/> Filtrar lista <ChevronRight size={15}/></summary>
+                    <aside className="tri-filters" aria-label="Filtros del explorador">
                   <div className="tri-panel-title">
                     <h2><Filter size={17}/> Filtros</h2>
                     <button type="button" onClick={resetFilters}>Limpiar</button>
@@ -896,10 +928,7 @@ setBusy(false);
                     </div>
                   </details>
                 </aside>
-                <section className="tri-standards" aria-label="Lista de estándares">
-                  <header className="tri-panel-title">
-                    <h2>Estándares <span>({standards.length})</span></h2>
-                  </header>
+                  </details>
                   <div className="tri-standard-list">
                     {standards.filter((st) => {
                       const summary = groupSummary(st.points.flatMap((pt) => pt.items));
@@ -953,7 +982,7 @@ setBusy(false);
                       <strong>{selectedStandardSummary.percent}%</strong>
                       <div className="tri-progress"><span style={{width:selectedStandardSummary.percent+'%'}}/></div>
                     </div>
-                    <button type="button" className="tri-add-button" onClick={startQuickUpload}><Upload size={16}/> Registrar evidencia</button>
+                    <button type="button" className="tri-add-button" onClick={startQuickUpload}><Upload size={16}/> Cargar documento</button>
                   </div>
                   <div className="tri-points-head">
                     <div><h3>Puntos de evaluación</h3><p>Selecciona un punto para ver sus medios de logro.</p></div>
@@ -991,17 +1020,26 @@ setBusy(false);
                               </div>
                               <div className="tri-media-list">
                                 {pt.visibleItems.map((it) => (
-                                  <button type="button" className="tri-media-item" key={it.id}
-                                    onClick={() => openItem(it.id)} title={'Ver ficha ' + it.id}>
-                                    <span className="tri-media-code">{it.id}</span>
-                                    <span className="tri-media-description">
-                                      <strong title={it.text || normalizeType(it.type)}>{it.text?.trim() || normalizeType(it.type)}</strong>
-                                      <small>{normalizeType(it.type)}</small>
-                                    </span>
+                                  <div className="tri-media-item" key={it.id}>
+                                    <button type="button" className="tri-media-main"
+                                      onClick={() => openItem(it.id)} title={'Ver información de ' + it.id}>
+                                      <span className="tri-media-code">{it.id}</span>
+                                      <span className="tri-media-description">
+                                        <strong title={it.text || normalizeType(it.type)}>{it.text?.trim() || normalizeType(it.type)}</strong>
+                                        <small>{normalizeType(it.type)}</small>
+                                      </span>
+                                    </button>
                                     <span className={'quiet-status-badge status-' + getStatus(it.id)}>{STATUS_META[getStatus(it.id)].name}</span>
                                     <span className="tri-media-files"><Paperclip size={14}/>{getDocs(it.id).length}</span>
-                                    <span className="tri-media-open">Ver ficha <ChevronRight size={15}/></span>
-                                  </button>
+                                    <button type="button" className="tri-media-upload" onClick={() => openItem(it.id, true)}
+                                      aria-label={'Cargar documento en el medio ' + it.id}>
+                                      <Upload size={15}/> Cargar documento
+                                    </button>
+                                    <button type="button" className="tri-media-detail" onClick={() => openItem(it.id)}
+                                      aria-label={'Ver ficha del medio ' + it.id}>
+                                      Ver ficha <ChevronRight size={15}/>
+                                    </button>
+                                  </div>
                                 ))}
                               </div>
                             </div>
@@ -1043,7 +1081,7 @@ setBusy(false);
       <div className="evidence-card evidence-upload" id="carga-evidencia">
         <div className="evidence-card-title">
           <Upload size={20} />
-          <h2>Subir documento</h2>
+          <h2>{uploadFromMedia ? 'Cargar documento' : 'Subir documento'}</h2>
           <span>Medio {selected.id}</span>
         </div>
 
