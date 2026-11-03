@@ -283,6 +283,8 @@ export default function Home() {
       point: pt.id,
       description: it.text?.trim() || normalizeType(it.type),
       type: normalizeType(it.type),
+      documentCount: getDocs(it.id).length,
+      status: getStatus(it.id),
     }))
   );
   const normalizedQuickSearch = quickMediaSearch.trim().toLocaleLowerCase('es');
@@ -794,6 +796,15 @@ setBusy(false);
                               <strong>{option.description}</strong>
                               <small>Punto {option.point} · {option.type}</small>
                             </span>
+                            <span className="quick-media-result-indicators">
+                              <span className={'quick-media-state state-' + option.status}>
+                                {option.status === 'completo' && <CheckCircle2 size={13}/>}
+                                {STATUS_META[option.status].name}
+                              </span>
+                              <span className={option.documentCount ? 'quick-media-docs has-docs' : 'quick-media-docs'}>
+                                <Paperclip size={12}/>{option.documentCount ? option.documentCount + ' archivo(s)' : 'Sin archivos'}
+                              </span>
+                            </span>
                             {quickMedium === option.id
                               ? <CheckCircle2 size={18} color="#19835b" aria-hidden="true"/>
                               : <ChevronRight size={16} aria-hidden="true"/>}
@@ -808,6 +819,9 @@ setBusy(false);
                         <p className="quick-media-selected" role="status">
                           <CheckCircle2 size={15} aria-hidden="true"/>
                           Seleccionado: <strong>{selectedQuickMedia.id}</strong> — {selectedQuickMedia.type}
+                          {selectedQuickMedia.documentCount > 0 && (
+                            <span> · {selectedQuickMedia.documentCount} documento(s) cargado(s)</span>
+                          )}
                         </p>
                       )}
                     </div>
@@ -821,6 +835,11 @@ setBusy(false);
                       <div>
                         <small>Medio de logro seleccionado</small>
                         <strong>{quickMedium} · {selectedQuickMedia?.description || 'Documento'}</strong>
+                        {selectedQuickMedia && (
+                          <span className="quick-current-status">
+                            Estado actual: <b>{STATUS_META[selectedQuickMedia.status].name}</b> · {selectedQuickMedia.documentCount} archivo(s)
+                          </span>
+                        )}
                       </div>
                       <button type="button" disabled={busy} onClick={() => setQuickUploadStep('select')}>Cambiar</button>
                     </div>
