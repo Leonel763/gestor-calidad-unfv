@@ -176,6 +176,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [point, setPoint] = useState<string | null>('1.1');
   const [item, setItem] = useState<string | null>(null);
   const [showRequirements,setShowRequirements] = useState(false);
+  const [navigationRestored, setNavigationRestored] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | Status>('todos');
   const [existenceFilter, setExistenceFilter] = useState<'todos' | Existence>('todos');
@@ -214,6 +215,85 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const previewRequest = useRef(0);
+
+  // Mantener la vista de cada usuario durante la sesión de esta pestaña.
+  // Se guarda solo navegación y filtros, nunca archivos, contraseñas o formularios.
+  const navigationKey = 'unfv-quality-workspace:v1:' + identity.id;
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(navigationKey);
+      if (raw) {
+        const saved: unknown = JSON.parse(raw);
+        if (saved && typeof saved === 'object') {
+          const view = saved as Record<string, unknown>;
+          const permittedSections = ['inicio', 'estandares', 'biblioteca', 'pendientes'];
+          const savedSection = permittedSections.includes(String(view.section))
+            ? view.section as 'inicio' | 'estandares' | 'biblioteca' | 'pendientes'
+            : 'inicio';
+          const match = typeof view.item === 'string'
+            ? all.find((record) => record.id === view.item)
+            : undefined;
+
+          if (match) {
+            // La ficha prevalece sobre otros valores antiguos o inconsistentes.
+            setSection('estandares');
+            setStandard(match.standard);
+            setPoint(match.point);
+            setItem(match.id);
+            setShowRequirements(view.showRequirements === true);
+          } else {
+            setSection(savedSection);
+            const savedStandard = standards.find((value) => value.id === view.standard) || standards[0];
+            setStandard(savedStandard.id);
+            const savedPoint = savedStandard.points.find((value) => value.id === view.point);
+            setPoint(savedPoint?.id || savedStandard.points[0]?.id || null);
+            setItem(null);
+            setShowRequirements(false);
+          }
+
+          if (typeof view.query === 'string') setQuery(view.query.slice(0, 200));
+          if (view.statusFilter === 'todos' ||
+            (typeof view.statusFilter === 'string' && Object.prototype.hasOwnProperty.call(STATUS_META, view.statusFilter))) {
+            setStatusFilter(view.statusFilter as 'todos' | Status);
+          }
+          if (EXISTENCE_OPTIONS.some((value) => value.value === view.existenceFilter)) {
+            setExistenceFilter(view.existenceFilter as 'todos' | Existence);
+          }
+          if (TYPE_OPTIONS.includes(String(view.typeFilter))) setTypeFilter(String(view.typeFilter));
+          if (view.libraryStandardFilter === 'todos' ||
+            standards.some((value) => String(value.id) === view.libraryStandardFilter)) {
+            setLibraryStandardFilter(String(view.libraryStandardFilter));
+          }
+          if (view.explorerStatus === 'todos' ||
+            (typeof view.explorerStatus === 'string' &&
+              Object.prototype.hasOwnProperty.call(VISUAL_SUMMARY_META, view.explorerStatus))) {
+            setExplorerStatus(view.explorerStatus as 'todos' | VisualSummaryKey);
+          }
+        }
+      }
+    } catch {
+      // Si el navegador bloquea el almacenamiento o hay datos antiguos, abrir Inicio.
+    } finally {
+      setNavigationRestored(true);
+    }
+  }, [navigationKey]);
+
+  useEffect(() => {
+    if (!navigationRestored) return;
+    try {
+      window.sessionStorage.setItem(navigationKey, JSON.stringify({
+        section, standard, point, item, showRequirements, query,
+        statusFilter, existenceFilter, typeFilter, libraryStandardFilter, explorerStatus,
+      }));
+    } catch {
+      // La navegación sigue funcionando aunque no esté disponible sessionStorage.
+    }
+  }, [
+    navigationRestored, navigationKey, section, standard, point, item,
+    showRequirements, query, statusFilter, existenceFilter, typeFilter,
+    libraryStandardFilter, explorerStatus,
+  ]);
 
   function dismissAlert() {
     if (alertTimer.current !== null) {
@@ -706,6 +786,14 @@ setBusy(false);
     { id: 'estandares', title: 'Estándares', icon: Layers3 },
     { id: 'biblioteca', title: 'Biblioteca', icon: Library },
   ] as const;
+
+  if (!navigationRestored) {
+    return (
+      <main className="unfv-auth-screen">
+        <div className="unfv-auth-card" role="status">Recuperando tu última vista…</div>
+      </main>
+    );
+  }
 
   return (
     <div className="shell shell-modern shell-horizontal">
