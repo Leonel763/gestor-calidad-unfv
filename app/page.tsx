@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
-  Cloud,
   Download,
   Eye,
   FileText,
@@ -20,13 +19,20 @@ import {
   Library,
   Landmark,
   BarChart3,
-  Menu,
   Paperclip,
   Search,
   Trash2,
   Upload,
+  Info,
+  LogOut,
+  UserRound,
+  MessageCircle,
+  AlertTriangle,
   X,
 } from 'lucide-react';
+import {AuthGate, type ApprovedIdentity} from './auth-gate';
+import {DocumentFeedback, type DocumentCommentBrief} from './document-feedback';
+import {StandardRequirementsDrawer} from './standard-requirements-drawer';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
 
@@ -40,6 +46,8 @@ type Item = {
   manager: string;
   gap: string;
   action: string;
+  proposal?: string;
+  observations?: string;
 };
 type Point = { id: string; criterion: string; items: Item[] };
 type Standard = { id: number; title: string; points: Point[] };
@@ -72,6 +80,28 @@ const STATUS_META: Record<Status, { name: string; color: string }> = {
   complementar: { name: 'Por complementar', color: 'amber' },
   completo: { name: 'Completo', color: 'green' },
 };
+
+
+type VisualSummaryKey = 'completo' | 'parcial' | 'complementar' | 'simulado' | 'pendiente';
+const VISUAL_SUMMARY_META: Record<VisualSummaryKey, { label: string; shortLabel: string }> = {
+  completo: { label: 'Completo', shortLabel: 'Completo' },
+  parcial: { label: 'En avance', shortLabel: 'En avance' },
+  complementar: { label: 'Por complementar', shortLabel: 'Complementar' },
+  simulado: { label: 'Con datos simulados', shortLabel: 'Simulados' },
+  pendiente: { label: 'Pendiente', shortLabel: 'Pendiente' },
+};
+
+// Estado visual calculado a partir de los medios, nunca se guarda en la base de datos.
+function summarizeStatuses(statuses: Status[]) {
+  const total = statuses.length;
+  const completed = statuses.filter((status) => status === 'completo').length;
+  let kind: VisualSummaryKey = 'pendiente';
+  if (total > 0 && completed === total) kind = 'completo';
+  else if (statuses.includes('complementar')) kind = 'complementar';
+  else if (statuses.includes('en_proceso')) kind = 'simulado';
+  else if (completed > 0) kind = 'parcial';
+  return { kind, total, completed, percent: total ? Math.round(completed / total * 100) : 0, ...VISUAL_SUMMARY_META[kind] };
+}
 
 const EXISTENCE_OPTIONS = [
   { value: 'todos', label: 'Todos' },
@@ -136,18 +166,31 @@ function formatBytes(bytes: number) {
 }
 
 export default function Home() {
+  return <AuthGate>{(identity)=><ProtectedHome key={identity.id} identity={identity}/>}</AuthGate>;
+}
+
+function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const sb = client();
   const [section, setSection] = useState<'inicio' | 'estandares' | 'biblioteca' | 'pendientes'>('inicio');
   const [standard, setStandard] = useState<number>(1);
-  const [point, setPoint] = useState<string | null>(null);
+  const [point, setPoint] = useState<string | null>('1.1');
   const [item, setItem] = useState<string | null>(null);
-  const [sidebar, setSidebar] = useState(false);
+  const [showRequirements,setShowRequirements] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | Status>('todos');
   const [existenceFilter, setExistenceFilter] = useState<'todos' | Existence>('todos');
   const [typeFilter, setTypeFilter] = useState('Todos');
   const [libraryStandardFilter, setLibraryStandardFilter] = useState('todos');
   const [libraryPage, setLibraryPage] = useState(1);
+  const [quickUpload, setQuickUpload] = useState(false);
+  const [quickMedium, setQuickMedium] = useState('');
+  const [quickMediaSearch, setQuickMediaSearch] = useState('');
+  const [quickUploadStep, setQuickUploadStep] = useState<'select' | 'attach' | 'done'>('select');
+  const [quickUploadError, setQuickUploadError] = useState('');
+  const [quickSavedNames, setQuickSavedNames] = useState<string[]>([]);
+  const quickFileInput = useRef<HTMLInputElement | null>(null);
+  const [uploadFromMedia, setUploadFromMedia] = useState(false);
+  const [explorerStatus, setExplorerStatus] = useState<'todos' | VisualSummaryKey>('todos');
   const [tracking, setTracking] = useState<Tracking[]>([]);
   const [documents, setDocuments] = useState<Evidence[]>([]);
   const [alert, setAlert] = useState<Notice | null>(null);
@@ -155,11 +198,19 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadStatus, setUploadStatus] = useState<Exclude<Status, 'pendiente'> | ''>('');
-  const [uploader, setUploader] = useState('');
+  const [uploader, setUploader] = useState(identity.full_name);
   const [notes, setNotes] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Evidence | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<Evidence | null>(null);
+  const [feedbackDoc,setFeedbackDoc] = useState<Evidence|null>(null);
+  const [commentBriefs,setCommentBriefs] = useState<DocumentCommentBrief[]>([]);
+  const commentCounts=(id:string)=>commentBriefs.filter(comment=>comment.evidence_id===id).length;
+  const pendingComments=(id:string)=>commentBriefs.filter(comment=>
+    comment.evidence_id===id &&
+    comment.comment_type==='solicitar_correccion' &&
+    comment.status==='abierto'
+  ).length;
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const previewRequest = useRef(0);
@@ -173,6 +224,7 @@ export default function Home() {
   }
 
   function showAlert(message: string, kind: Notice['kind'] = 'error') {
+    if (quickUpload && kind === 'error') setQuickUploadError(message);
     if (alertTimer.current !== null) window.clearTimeout(alertTimer.current);
     setAlert({ message, kind });
     alertTimer.current = window.setTimeout(() => {
@@ -186,19 +238,22 @@ export default function Home() {
   }, []);
 
   const refresh = async () => {
-    if (!sb) return;
-    const [docsRes, trackingRes] = await Promise.all([
+    if (!sb || !identity.approved) return;
+    const [docsRes, trackingRes, commentRes] = await Promise.all([
       sb.from('evidencias').select('*').order('created_at', { ascending: false }),
       sb.from('seguimiento').select('*'),
+      sb.from('document_comments').select('evidence_id,comment_type,status'),
     ]);
     if (docsRes.error) showAlert(`No se pudo consultar la biblioteca: ${docsRes.error.message}`);
     else setDocuments((docsRes.data || []) as Evidence[]);
     if (trackingRes.error) showAlert(`No se pudo consultar el seguimiento: ${trackingRes.error.message}`);
     else setTracking((trackingRes.data || []) as Tracking[]);
+    if (commentRes.error) showAlert(`No se pudieron consultar las observaciones: ${commentRes.error.message}`);
+    else setCommentBriefs((commentRes.data || []) as DocumentCommentBrief[]);
   };
 
   useEffect(() => {
-    if (!sb) return;
+    if (!sb || !identity.approved) return;
     let active = true;
     const reload = () => {
       if (active) void refresh();
@@ -208,6 +263,7 @@ export default function Home() {
       .channel('gestor-compartido')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'evidencias' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'seguimiento' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'document_comments' }, reload)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') reload();
       });
@@ -238,6 +294,7 @@ export default function Home() {
   return tracking.find((t) => t.point_id === id)?.status || 'pendiente';
 };
   const getDocs = (id: string) => documents.filter((d) => d.point_id === id);
+  const groupSummary = (items: Item[]) => summarizeStatuses(items.map((it) => getStatus(it.id)));
 
   const complete = all.filter((a) => getStatus(a.id) === 'completo').length;
   const simulated = all.filter((a) => getStatus(a.id) === 'en_proceso').length;
@@ -247,7 +304,27 @@ export default function Home() {
   const numberedSubpoints = all.filter((a) => a.id.split('.').length === 3).length;
   const generalPercent = Math.round((complete / Math.max(all.length, 1)) * 100);
   const selectedStandard = standards.find((s) => s.id === standard) || standards[0];
+  const quickMediaOptions = selectedStandard.points.flatMap((pt) =>
+    pt.items.map((it) => ({
+      id: it.id,
+      point: pt.id,
+      description: it.text?.trim() || normalizeType(it.type),
+      type: normalizeType(it.type),
+      documentCount: getDocs(it.id).length,
+      status: getStatus(it.id),
+    }))
+  );
+  const normalizedQuickSearch = quickMediaSearch.trim().toLocaleLowerCase('es');
+  const visibleQuickMediaOptions = normalizedQuickSearch
+    ? quickMediaOptions.filter((option) =>
+        [option.id, option.point, option.description, option.type].some((field) =>
+          field.toLocaleLowerCase('es').includes(normalizedQuickSearch)
+        )
+      )
+    : quickMediaOptions;
+  const selectedQuickMedia = quickMediaOptions.find((option) => option.id === quickMedium);
   const selected = all.find((a) => a.id === item) || null;
+  const selectedStandardSummary = groupSummary(selectedStandard.points.flatMap((pt) => pt.items));
 
   const filteredMatrixItems = useMemo(() => {
     return all.filter((record) => {
@@ -273,6 +350,12 @@ export default function Home() {
     });
   }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents]);
 
+  // Datos filtrados para la vista compacta; no alteran las evidencias de Supabase.
+  const filteredIds = new Set(filteredMatrixItems.map((record) => record.id));
+  const visiblePoints = selectedStandard.points
+    .map((pt) => ({ ...pt, visibleItems: pt.items.filter((it) => filteredIds.has(it.id)) }))
+    .filter((pt) => pt.visibleItems.length > 0);
+
   const libraryRows = useMemo(() => {
     const search = query.trim().toLowerCase();
     return documents.flatMap((doc) => {
@@ -296,6 +379,7 @@ export default function Home() {
   const recentActivity = useMemo(() => {
     const docEvents = documents.slice(0, 3).map((d) => ({
       id: d.id,
+      point_id: d.point_id,
       title: d.file_name,
       subtitle: `Documento cargado · ${d.point_id}`,
       when: new Date(d.created_at).toLocaleDateString('es-PE'),
@@ -306,6 +390,7 @@ export default function Home() {
       .slice(0, 2)
       .map((t) => ({
         id: t.point_id,
+        point_id: t.point_id,
         title: `Punto marcado como completo`,
         subtitle: t.point_id,
         when: new Date(t.updated_at).toLocaleDateString('es-PE'),
@@ -315,6 +400,7 @@ export default function Home() {
   }, [documents, tracking]);
 
   function resetFilters() {
+    setExplorerStatus('todos');
     setQuery('');
     setStatusFilter('todos');
     setExistenceFilter('todos');
@@ -329,31 +415,94 @@ export default function Home() {
 
   function nav(next: 'inicio' | 'estandares' | 'biblioteca' | 'pendientes') {
     setSection(next);
+    setQuickUpload(false);
     setItem(null);
-    setPoint(null);
-    setSidebar(false);
+    setPoint(next === 'estandares' ? standards.find((st) => st.id === standard)?.points[0]?.id || null : null);
     resetFilters();
     dismissAlert();
   }
 
   function openStd(id: number) {
+    setQuickMedium('');
     setStandard(id);
     setSection('estandares');
-    setPoint(null);
+    setPoint(standards.find((st) => st.id === id)?.points[0]?.id || null);
     setItem(null);
-    setSidebar(false);
   }
 
-  function openItem(code: string) {
+  function startQuickUpload() {
+    if (busy) return;
+    setUploadFromMedia(false);
+    setQuickMedium('');
+    setQuickMediaSearch('');
+    setQuickUploadError('');
+    setQuickSavedNames([]);
+    setQuickUploadStep('select');
+    setFiles([]);
+    setUploadStatus('');
+    setUploader(identity.full_name);
+    setNotes('');
+    setQuickUpload(true);
+    dismissAlert();
+  }
+
+  function openQuickUploadFor(code: string) {
+    const record = all.find((row) => row.id === code);
+    if (!record || busy) return;
+    setStandard(record.standard);
+    setQuickMedium(record.id);
+    setQuickMediaSearch('');
+    setQuickUploadError('');
+    setQuickSavedNames([]);
+    setQuickUploadStep('attach');
+    setFiles([]);
+    setUploadStatus('');
+    setUploader(identity.full_name);
+    setNotes('');
+    setQuickUpload(true);
+    dismissAlert();
+  }
+
+  function closeQuickUpload() {
+    if (busy) return;
+    setQuickUpload(false);
+    setQuickUploadError('');
+    setQuickUploadStep('select');
+  }
+
+  function checkQuickUploadFiles(chosen: File[]) {
+    const allowed = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
+    const invalid = chosen.find((file) => {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      return !allowed.includes(ext) || file.size > 15 * 1024 * 1024;
+    });
+    if (invalid) {
+      setQuickUploadError('Archivo no permitido: ' + invalid.name + '. Usa PDF, Word, Excel o imágenes de hasta 15 MB por archivo.');
+      return;
+    }
+    setQuickUploadError('');
+    setFiles((previous) => {
+      const unique = new Map<string, File>();
+      [...previous, ...chosen].forEach((file) =>
+        unique.set(file.name + '-' + file.size + '-' + file.lastModified, file)
+      );
+      return Array.from(unique.values());
+    });
+  }
+
+  function openItem(code: string, forUpload = false) {
     const record = all.find((row) => row.id === code);
     if (!record) return;
+    setQuickUpload(false);
     setSection('estandares');
     setStandard(record.standard);
     setPoint(record.point);
     setItem(record.id);
+    setShowRequirements(false);
+    setUploadFromMedia(forUpload);
     setFiles([]);
     setUploadStatus('');
-    setUploader('');
+    setUploader(identity.full_name);
     setNotes('');
     dismissAlert();
   }
@@ -361,27 +510,36 @@ export default function Home() {
 
 
   async function upload() {
-  if (!sb || !selected || busy) return;
+  const target = quickUpload ? all.find((row) => row.id === quickMedium) || null : selected;
+  if (!sb || !target || busy || !identity.approved) return;
+  const {data:{user:verified},error:verificationError}=await sb.auth.getUser();
+  if(verificationError || verified?.id !== identity.id) {
+    showAlert('La sesión caducó. Vuelve a ingresar.');
+    return;
+  }
 
   if (!uploadStatus) {
     showAlert('Debes seleccionar el estado del medio.');
     return;
   }
 
-  if (!files.length && getDocs(selected.id).length === 0) {
+  if (!files.length && (quickUpload || getDocs(target.id).length === 0)) {
     showAlert('Debes adjuntar al menos un documento.');
     return;
   }
+    const whitelist = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
+    const invalid = files.find((file) => {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      return !whitelist.includes(ext) || file.size > 15 * 1024 * 1024;
+    });
+    if (invalid) {
+      showAlert(`Archivo no válido: ${invalid.name}. Admite PDF, Word, Excel e imágenes hasta 15 MB.`);
+      return;
+    }
     setBusy(true);
     dismissAlert();
-    const whitelist = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
+    try {
     for (const file of files) {
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      if (!whitelist.includes(ext) || file.size > 15 * 1024 * 1024) {
-        showAlert(`Archivo no válido: ${file.name}. Admite PDF, Word, Excel e imágenes hasta 15 MB.`);
-        setBusy(false);
-        return;
-      }
       const safeName = file.name
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -398,12 +556,13 @@ export default function Home() {
         return;
       }
       const { error: dbErr } = await sb.from('evidencias').insert({
-        point_id: selected.id,
+        point_id: target.id,
         file_name: file.name,
         file_path: path,
         mime_type: file.type || 'application/pdf',
         size_bytes: file.size,
-        uploader: uploader.trim() || 'Colaborador',
+        uploader: identity.full_name,
+        uploaded_by: identity.id,
         notes: notes.trim(),
       });
       if (dbErr) {
@@ -417,7 +576,7 @@ export default function Home() {
   .from('seguimiento')
   .upsert(
     {
-      point_id: selected.id,
+      point_id: target.id,
       status: uploadStatus,
       notes: '',
       updated_at: new Date().toISOString(),
@@ -434,18 +593,25 @@ if (statusError) {
   return;
 }
 
+const savedNames = files.map((file) => file.name);
 setFiles([]);
-setUploader('');
+setUploader(identity.full_name);
 setNotes('');
 setUploadStatus('');
 
-showAlert(
-  'Documentos y estado guardados correctamente.',
-  'success'
-);
-
 await refresh();
+if (quickUpload) {
+  setQuickSavedNames(savedNames);
+  setQuickUploadError('');
+  setQuickUploadStep('done');
+} else {
+  showAlert('Documentos y estado guardados correctamente.', 'success');
+}
 setBusy(false);
+    } catch (error) {
+      showAlert('No se pudo completar la carga: ' + (error instanceof Error ? error.message : 'error inesperado'));
+      setBusy(false);
+    }
   }
 
   async function openPreview(doc: Evidence) {
@@ -496,9 +662,12 @@ setBusy(false);
     setDeleting(true);
     dismissAlert();
     try {
+      if(!sb) throw new Error('Debes iniciar sesión para eliminar.');
+      const {data:{session}}=await sb.auth.getSession();
+      if(!session?.access_token) throw new Error('Sesión expirada. Vuelve a ingresar.');
       const response = await fetch('/api/documents/delete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
         body: JSON.stringify({ id: deleteTarget.id }),
       });
       const result = await response.json();
@@ -523,70 +692,314 @@ setBusy(false);
           ? 'Biblioteca documental'
           : 'Seguimiento';
 
+  useEffect(() => {
+    if (!quickUpload) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) closeQuickUpload();
+    };
+    document.addEventListener('keydown', onEscape);
+    return () => document.removeEventListener('keydown', onEscape);
+  }, [quickUpload, busy]);
+
   const menu = [
-    { id: 'inicio', title: 'Panel general', icon: LayoutDashboard },
+    { id: 'inicio', title: 'Inicio', icon: LayoutDashboard },
     { id: 'estandares', title: 'Estándares', icon: Layers3 },
-    { id: 'biblioteca', title: 'Biblioteca documental', icon: Library },
+    { id: 'biblioteca', title: 'Biblioteca', icon: Library },
   ] as const;
 
   return (
-    <div className="shell shell-modern">
-      <aside className={`sidebar sidebar-modern ${sidebar ? 'show' : ''}`}>
-        <div className="brand brand-modern">
-          <div className="brand-symbol">
-            <BookOpen size={22} />
-          </div>
-          <div className="brand-title">
-            <strong>Gestión de Calidad</strong>
-            <span>Derecho · UNFV</span>
-          </div>
-          <button className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebar(false)}>
-            <X size={18} />
-          </button>
-        </div>
-        <div className="side-caption">ESPACIO DE TRABAJO</div>
-        <nav>
-          {menu.map((entry) => (
-            <button key={entry.id} className={`side-nav ${section === entry.id ? 'active' : ''}`} onClick={() => nav(entry.id)}>
-              <entry.icon size={18} />
-              <span>{entry.title}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="unfv-mini-panel">
-          <div className="unfv-mini-mark" aria-hidden="true"><Landmark size={26} /></div>
-          <div>
-            <strong>Universidad Nacional</strong>
-            <span>Federico Villarreal</span>
-            <small>Facultad de Derecho · Gestión de Calidad 2026</small>
-          </div>
-        </div>
-        <div className="side-footer">
-          <span className="pulse" /> {sb ? 'Repositorio conectado' : 'Modo consulta'}
-          <small>Matriz GAB Derecho · 2026</small>
-        </div>
-      </aside>
-
-      <div className="main">
-        <header className="topbar topbar-modern">
-          <button className="mobile-menu" onClick={() => setSidebar(true)} aria-label="Abrir menú">
-            <Menu size={22} />
-          </button>
-          <div className="breadcrumbs">
-            Facultad de Derecho <ChevronRight size={13} /> <b>{title}</b>
-          </div>
-          <div className="top-right">
-            <div className="top-search">
-              <Search size={17} />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar estándares, documentos..." />
-            </div>
-            <span className="top-pill ok">
-              <Cloud size={15} /> Nube conectada
+    <div className="shell shell-modern shell-horizontal">
+      <div className="main main-horizontal">
+        <header className="topbar topbar-modern simple-topbar">
+          <button type="button" className="simple-brand" onClick={() => nav('inicio')} aria-label="Ir a Inicio">
+            <span className="simple-brand-symbol"><Landmark size={23} /></span>
+            <span className="simple-brand-copy">
+              <strong>UNFV <span className="simple-brand-divider" aria-hidden="true" /> Gestión de Calidad</strong>
+              <small>Facultad de Derecho</small>
             </span>
+          </button>
+          <nav className="simple-main-nav" aria-label="Secciones principales">
+            {menu.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={section === entry.id ? 'simple-nav-button is-active' : 'simple-nav-button'}
+                onClick={() => nav(entry.id)}
+                aria-current={section === entry.id ? 'page' : undefined}
+              >
+                <entry.icon size={17} />
+                <span>{entry.title}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="simple-header-search">
+            <Search size={17} aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(e) => {
+                const next = e.target.value;
+                setQuery(next);
+                if (next.trim() && (section === 'inicio' || item)) {
+                  setSection('estandares');
+                  setItem(null);
+                  setQuickUpload(false);
+                }
+              }}
+              placeholder={section === 'biblioteca' ? 'Buscar documentos...' : 'Buscar estándares y medios...'}
+              aria-label="Buscar estándares, medios y documentos"
+            />
+            {query && (
+              <button type="button" className="simple-search-clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15}/></button>
+            )}
           </div>
+          <div className="unfv-account-menu">
+            <span className="unfv-account-name"><UserRound size={15}/>{identity.full_name}</span>
+            <button type="button" className="unfv-sign-out" onClick={()=>void sb?.auth.signOut()} title="Cerrar sesión">
+              <LogOut size={16}/><span>Salir</span>
+            </button>
+          </div>
+          <button type="button" className="header-upload-button" onClick={startQuickUpload}>
+            <Upload size={17} aria-hidden="true" />
+            <span>Cargar documento</span>
+          </button>
         </header>
 
         <div className="container page-modern">
+
+          {quickUpload && (
+            <div className="quick-upload-overlay" role="presentation"
+              onMouseDown={(event) => { if (event.target === event.currentTarget) closeQuickUpload(); }}>
+              <section className="quick-upload-dialog quick-upload-wizard" role="dialog" aria-modal="true"
+                aria-labelledby="quick-upload-title">
+                <div className="quick-upload-heading">
+                  <span className="quick-upload-icon">{quickUploadStep === 'done' ? <CheckCircle2 size={21}/> : <Upload size={21}/>}</span>
+                  <div>
+                    <h2 id="quick-upload-title">{quickUploadStep === 'done' ? 'Documento registrado' : 'Cargar documento'}</h2>
+                    <p>{quickUploadStep === 'select'
+                      ? 'Primero selecciona el estándar y el medio de logro.'
+                      : quickUploadStep === 'attach'
+                      ? 'Adjunta el archivo y completa los datos de registro.'
+                      : 'La información se guardó correctamente.'}</p>
+                  </div>
+                  <button type="button" className="quick-upload-close" disabled={busy}
+                    onClick={closeQuickUpload} aria-label="Cerrar formulario"><X size={18}/></button>
+                </div>
+
+                <div className="quick-wizard-steps" aria-label="Progreso del registro">
+                  <span className={quickUploadStep === 'select' ? 'is-current' : 'is-completed'}>
+                    <b>1</b> Medio
+                  </span>
+                  <span className={quickUploadStep === 'attach' ? 'is-current' : quickUploadStep === 'done' ? 'is-completed' : ''}>
+                    <b>2</b> Documento
+                  </span>
+                  <span className={quickUploadStep === 'done' ? 'is-current' : ''}>
+                    <b>3</b> Confirmación
+                  </span>
+                </div>
+
+                {quickUploadStep === 'select' && (
+                  <div className="quick-upload-fields">
+                    <label htmlFor="quick-standard">Estándar
+                      <select id="quick-standard" value={standard}
+                        onChange={(event) => {
+                          setStandard(Number(event.target.value));
+                          setQuickMedium('');
+                          setQuickMediaSearch('');
+                          setQuickUploadError('');
+                        }}>
+                        {standards.map((st) =>
+                          <option key={st.id} value={st.id}>E{String(st.id).padStart(2, '0')} — {st.title.slice(0, 66)}{st.title.length > 66 ? '…' : ''}</option>
+                        )}
+                      </select>
+                    </label>
+                    <div className="quick-upload-media-picker">
+                      <label htmlFor="quick-media-search">Buscar medio de logro</label>
+                      <div className="quick-media-search">
+                        <Search size={17} aria-hidden="true"/>
+                        <input id="quick-media-search" type="search"
+                          placeholder="Código o palabra clave (ej.: 1.1.2, matriz)"
+                          value={quickMediaSearch}
+                          onChange={(event) => setQuickMediaSearch(event.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="quick-media-results-summary" role="status">
+                        <span>{visibleQuickMediaOptions.length} de {quickMediaOptions.length} medios</span>
+                        <span>Selecciona uno para continuar</span>
+                      </div>
+                      <div className="quick-media-results" aria-label="Resultados de medios de logro">
+                        {visibleQuickMediaOptions.length ? visibleQuickMediaOptions.map((option) => (
+                          <button key={option.id} type="button"
+                            className={quickMedium === option.id ? 'quick-media-result is-selected' : 'quick-media-result'}
+                            aria-pressed={quickMedium === option.id}
+                            onClick={() => { setQuickMedium(option.id); setQuickUploadError(''); }}
+                            title={option.id + ' — ' + option.description}>
+                            <span className="quick-media-result-code">{option.id}</span>
+                            <span className="quick-media-result-text">
+                              <strong>{option.description}</strong>
+                              <small>Punto {option.point} · {option.type}</small>
+                            </span>
+                            <span className="quick-media-result-indicators">
+                              <span className={'quick-media-state state-' + option.status}>
+                                {option.status === 'completo' && <CheckCircle2 size={13}/>}
+                                {STATUS_META[option.status].name}
+                              </span>
+                              <span className={option.documentCount ? 'quick-media-docs has-docs' : 'quick-media-docs'}>
+                                <Paperclip size={12}/>{option.documentCount ? 'Documento: Completo · ' + option.documentCount + ' archivo(s)' : 'Documento: Pendiente'}
+                              </span>
+                            </span>
+                            {quickMedium === option.id
+                              ? <CheckCircle2 size={18} color="#19835b" aria-hidden="true"/>
+                              : <ChevronRight size={16} aria-hidden="true"/>}
+                          </button>
+                        )) : (
+                          <div className="quick-media-no-results">
+                            No hay medios que coincidan. Prueba con el código o una palabra de la descripción.
+                          </div>
+                        )}
+                      </div>
+                      {selectedQuickMedia && (
+                        <p className="quick-media-selected" role="status">
+                          <CheckCircle2 size={15} aria-hidden="true"/>
+                          Seleccionado: <strong>{selectedQuickMedia.id}</strong> — {selectedQuickMedia.type}
+                          {selectedQuickMedia.documentCount > 0 && (
+                            <span> · {selectedQuickMedia.documentCount} documento(s) cargado(s)</span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {quickUploadStep === 'attach' && (
+                  <div className="quick-upload-attach">
+                    <div className="quick-selected-medium">
+                      <span className="quick-selected-medium-icon"><FileText size={19}/></span>
+                      <div>
+                        <small>Medio de logro seleccionado</small>
+                        <strong>{quickMedium} · {selectedQuickMedia?.description || 'Documento'}</strong>
+                        {selectedQuickMedia && (
+                          <span className="quick-current-status">
+                            Estado actual: <b>{STATUS_META[selectedQuickMedia.status].name}</b> · {selectedQuickMedia.documentCount} archivo(s)
+                          </span>
+                        )}
+                      </div>
+                      <button type="button" disabled={busy} onClick={() => setQuickUploadStep('select')}>Cambiar</button>
+                    </div>
+                    <div className="quick-attach-fields">
+                      <label className="quick-dropzone" htmlFor="quick-upload-files"
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          if (!busy) checkQuickUploadFiles(Array.from(event.dataTransfer.files));
+                        }}>
+                        <Upload size={24}/>
+                        <strong>Arrastra archivos o haz clic para seleccionarlos</strong>
+                        <small>PDF, Word, Excel o imágenes · Máximo 15 MB por archivo</small>
+                        <span>Seleccionar archivos</span>
+                        <input ref={quickFileInput} id="quick-upload-files" type="file" multiple
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                          disabled={busy} onChange={(event) => {
+                            checkQuickUploadFiles(Array.from(event.target.files || []));
+                            event.target.value = '';
+                          }}/>
+                      </label>
+                      {files.length > 0 && (
+                        <div className="quick-attached-list" aria-label="Archivos preparados para subir">
+                          {files.map((file,index) => (
+                            <div key={file.name + '-' + file.size + '-' + file.lastModified}>
+                              <FileText size={17}/>
+                              <span title={file.name}>{file.name}</span>
+                              <small>{(file.size / 1024 / 1024).toFixed(2)} MB</small>
+                              <button type="button" disabled={busy} aria-label={'Quitar ' + file.name}
+                                onClick={() => setFiles((current) => current.filter((_,i) => i !== index))}>
+                                <X size={15}/>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <label htmlFor="quick-upload-status">Estado del medio <b>*</b>
+                        <select id="quick-upload-status" value={uploadStatus} disabled={busy}
+                          onChange={(event) => setUploadStatus(event.target.value as Exclude<Status,'pendiente'> | '')}>
+                          <option value="">Selecciona el estado...</option>
+                          <option value="completo">Completo</option>
+                          <option value="en_proceso">Con datos simulados</option>
+                          <option value="complementar">Por complementar</option>
+                        </select>
+                      </label>
+                      <div className="quick-attach-two-cols">
+                        <label htmlFor="quick-upload-uploader">Registrado por
+                          <input id="quick-upload-uploader" value={identity.full_name} disabled readOnly title="Nombre de tu cuenta"/>
+                        </label>
+                        <label htmlFor="quick-upload-notes">Observación (opcional)
+                          <input id="quick-upload-notes" value={notes} disabled={busy}
+                            onChange={(event) => setNotes(event.target.value)} placeholder="Detalle del documento"/>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {quickUploadStep === 'done' && (
+                  <div className="quick-upload-success" role="status">
+                    <CheckCircle2 size={48}/>
+                    <h3>¡Registro completado!</h3>
+                    <p>{quickSavedNames.length} documento(s) registrado(s) en el medio <strong>{quickMedium}</strong>.</p>
+                    <div className="quick-success-files">
+                      {quickSavedNames.map((name,index) => (
+                        <div key={name + index}><FileText size={15}/><span>{name}</span></div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {quickUploadError && <div className="quick-upload-error" role="alert">
+                  <CircleAlert size={16}/><span>{quickUploadError}</span>
+                </div>}
+                {quickUploadStep !== 'done' && !sb && (
+                  <div className="quick-upload-error" role="alert">No hay conexión con Supabase para cargar documentos.</div>
+                )}
+
+                <div className="quick-upload-actions">
+                  {quickUploadStep === 'select' && (
+                    <>
+                      <button type="button" className="quick-upload-cancel" onClick={closeQuickUpload}>Cancelar</button>
+                      <button type="button" className="quick-upload-continue" disabled={!quickMedium || !sb}
+                        onClick={() => { setQuickUploadStep('attach'); setQuickUploadError(''); }}>
+                        Continuar <ChevronRight size={16}/>
+                      </button>
+                    </>
+                  )}
+                  {quickUploadStep === 'attach' && (
+                    <>
+                      <button type="button" disabled={busy} className="quick-upload-cancel" onClick={() => setQuickUploadStep('select')}>
+                        <ArrowLeft size={15}/> Volver
+                      </button>
+                      <button type="button" className="quick-upload-continue"
+                        disabled={busy || !files.length || !uploadStatus || !sb}
+                        onClick={() => void upload()}>
+                        <Upload size={16}/> {busy ? 'Guardando documentos...' : 'Guardar documentos'}
+                      </button>
+                    </>
+                  )}
+                  {quickUploadStep === 'done' && (
+                    <>
+                      <button type="button" className="quick-upload-cancel" onClick={() => {
+                        setQuickUploadStep('select');
+                        setFiles([]); setQuickMedium(''); setQuickMediaSearch('');
+                        setUploadStatus(''); setNotes(''); setUploader(identity.full_name); setQuickSavedNames([]);
+                      }}>Cargar otro documento</button>
+                      <button type="button" className="quick-upload-continue" onClick={closeQuickUpload}>
+                        Finalizar <CheckCircle2 size={16}/>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
+
           {alert && (
             <div className={`toast-notice ${alert.kind}`} role={alert.kind === 'error' ? 'alert' : 'status'} aria-live={alert.kind === 'error' ? 'assertive' : 'polite'}>
               <span className="toast-icon">{alert.kind === 'success' ? <CheckCircle2 size={20} /> : <CircleAlert size={20} />}</span>
@@ -596,14 +1009,14 @@ setBusy(false);
             </div>
           )}
 
-          {!selected && (
-            <div className="page-heading page-hero with-photo">
+          {!selected && section !== 'estandares' && (
+            <div className={section === 'inicio' ? 'page-heading page-hero with-photo home-v2-hero' : 'page-heading page-hero with-photo'}>
               <div>
                 <div className="eyebrow">
                   <span className="eyebrow-dot" /> SISTEMA DE AUTOEVALUACIÓN Y ACREDITACIÓN
                 </div>
                 <h1>{section === 'inicio' ? 'Panel de control' : title}</h1>
-                <p>Información y evidencias organizadas para trabajar con claridad, en un solo lugar.</p>
+                <p>{section === 'inicio' ? 'Seguimiento del sistema de autoevaluación y acreditación.' : 'Información y evidencias organizadas para trabajar con claridad, en un solo lugar.'}</p>
               </div>
               <div className="heading-badge">
                 <BookOpen size={18} /> 18 estándares
@@ -612,178 +1025,352 @@ setBusy(false);
           )}
 
           {section === 'inicio' && !selected && (
-            <div className="home-layout">
-              <div className="home-main">
-                <div className="metrics metrics-modern">
-                  <StatCard number={standards.length} label="Estándares" sub="Matriz oficial" kind="m-one" />
-                  <StatCard number={allPoints} label="Puntos" sub="Total de evaluación" kind="m-two" />
-                  <StatCard number={all.length} label="Medios de logro" sub="Subpuntos numerados" kind="m-three" />
-                  <StatCard number={documents.length} label="Documentos cargados" sub="Evidencias en biblioteca" kind="m-four" />
-                </div>
-
-                <section className="progress-overview-card">
-                  <div className="progress-overview-head">
-                    <h2>Progreso general</h2>
+            <div className="home-v2">
+              <div className="home-v2-overview">
+                <section className="home-v2-card home-v2-main-progress" aria-label="Avance de acreditación">
+                  <div className="home-v2-section-heading">
+                    <span className="home-v2-title-icon"><CheckCircle2 size={22}/></span>
+                    <h2>Avance de acreditación</h2>
                   </div>
-                  <div className="progress-overview-body">
-                    <div className="progress-hero">
-                      <div className="progress-donut" style={{ ['--progress' as string]: `${generalPercent}%` } as CSSProperties}>
-                        <span>{generalPercent}%</span>
-                      </div>
-                      <div className="progress-copy">
-                        <strong>{complete} de {all.length} medios completados</strong>
-                        <p>Avance basado en {all.length} medios registrables; incluye {all.length - numberedSubpoints} puntos sin subpunto numerado.</p>
-                        <div className="progress-line"><i style={{ width: `${generalPercent}%` }} /></div>
+                  <div className="home-v2-progress-content">
+                    <div
+                      className="home-v2-progress-ring"
+                      style={{ ['--progress' as string]: `${generalPercent}%` } as CSSProperties}
+                      aria-label={`Avance total de ${generalPercent} por ciento`}
+                      role="img"
+                    >
+                      <div>
+                        <strong>{generalPercent}%</strong>
+                        <span>Avance general</span>
                       </div>
                     </div>
-                    <div className="progress-counters">
-                      <div className="overview-mini green"><span>Completos</span><b>{complete}</b></div>
-                      <div className="overview-mini purple"><span>Con datos simulados</span><b>{simulated}</b></div>
-                      <div className="overview-mini amber"><span>Por complementar</span><b>{need}</b></div>
-                      <div className="overview-mini neutral"><span>Pendientes</span><b>{pending}</b></div>
+                    <div className="home-v2-progress-description">
+                      <strong>{complete} de {all.length}</strong>
+                      <span>medios de logro completados</span>
+                      <div className="home-v2-progress-line" aria-hidden="true">
+                        <span style={{ width: `${generalPercent}%` }} />
+                      </div>
+                      <div className="home-v2-progress-totals">
+                        <span><Layers3 size={16}/><b>{standards.length}</b><small>Estándares</small></span>
+                        <span><ClipboardList size={16}/><b>{allPoints}</b><small>Puntos</small></span>
+                        <span><FileText size={16}/><b>{all.length}</b><small>Medios</small></span>
+                      </div>
                     </div>
                   </div>
                 </section>
 
-                <section className="block">
-                  <div className="block-title">
-                    <div>
-                      <h2>Explorar estándares</h2>
-                      <p>Selecciona un estándar para consultar sus puntos y medios de logro.</p>
-                    </div>
+                <section className="home-v2-card home-v2-status-card">
+                  <div className="home-v2-section-heading">
+                    <h2>Estado de medios de logro</h2>
                   </div>
-                  <div className="standard-grid grid-modern">
-                    {standards.slice(0, 6).map((st) => {
+                  <div className="home-v2-status-list">
+                    {([
+                      { key: 'complete', label: 'Completos', value: complete },
+                      { key: 'simulated', label: 'Con datos simulados', value: simulated },
+                      { key: 'needs', label: 'Por complementar', value: need },
+                      { key: 'pending', label: 'Pendientes', value: pending },
+                    ] as const).map((entry) => (
+                      <div key={entry.key} className="home-v2-status-row">
+                        <span className={`home-v2-status-dot ${entry.key}`} aria-hidden="true" />
+                        <span>{entry.label}</span>
+                        <strong>{entry.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="home-v2-card home-v2-quick-actions">
+                  <div className="home-v2-section-heading">
+                    <span className="home-v2-bolt"><Upload size={19} /></span>
+                    <h2>Acciones rápidas</h2>
+                  </div>
+                  <button type="button" className="home-v2-primary-action" onClick={startQuickUpload}>
+                    <Upload size={18}/> Registrar evidencia
+                  </button>
+                  <button type="button" className="home-v2-secondary-action" onClick={() => nav('biblioteca')}>
+                    <Library size={18}/> Ver biblioteca documental
+                  </button>
+                  <p>Gestiona las evidencias desde el medio de logro correspondiente.</p>
+                </section>
+              </div>
+
+              <div className="home-v2-bottom">
+                <section className="home-v2-card home-v2-standards">
+                  <div className="home-v2-block-heading">
+                    <div className="home-v2-heading-left">
+                      <Layers3 size={21}/>
+                      <h2>Estándares y su avance</h2>
+                    </div>
+                    <span>{standards.length} estándares</span>
+                  </div>
+                  <div className="home-v2-standards-list">
+                    {standards.slice(0, 3).map((st) => {
                       const stItems = st.points.flatMap((pt) => pt.items);
-                      const stCompleted = stItems.filter((it) => getStatus(it.id) === 'completo').length;
-                      const pct = Math.round((stCompleted / Math.max(stItems.length, 1)) * 100);
+                      const summary = groupSummary(stItems);
                       return (
-                        <button className="standard-card standard-card-modern" key={st.id} onClick={() => openStd(st.id)}>
-                          <div className="card-head">
-                            <span className="std-number">E{String(st.id).padStart(2, '0')}</span>
-                            <Folder size={18} />
-                          </div>
-                          <h3>{st.title}</h3>
-                          <div className="card-meta">
-                            <span>{st.points.length} puntos · {stItems.length} medios</span>
-                            <span>{stCompleted}/{stItems.length}</span>
-                          </div>
-                          <div className="progress"><i style={{ width: `${pct}%` }} /></div>
-                          <div className="card-actions-inline">Ver detalle <ChevronRight size={14} /></div>
+                        <button
+                          type="button"
+                          key={st.id}
+                          className="home-v2-standard-row"
+                          onClick={() => openStd(st.id)}
+                          aria-label={`Consultar estándar ${st.id}, ${summary.completed} de ${summary.total} medios completos`}
+                        >
+                          <span className="home-v2-standard-code">E{String(st.id).padStart(2, '0')}</span>
+                          <span className="home-v2-standard-info">
+                            <strong>{st.title}</strong>
+                            <small>{st.points.length} puntos · {summary.total} medios de logro</small>
+                            <span className="home-v2-standard-track" aria-hidden="true">
+                              <span style={{ width: `${summary.percent}%` }}/>
+                            </span>
+                          </span>
+                          <span className="home-v2-standard-fraction">{summary.completed}/{summary.total}</span>
+                          <span className={`home-v2-mini-status status-${summary.kind}`}>{summary.label}</span>
+                          <ChevronRight size={17} className="home-v2-row-chevron"/>
                         </button>
                       );
                     })}
                   </div>
-                </section>
-              </div>
-
-              <aside className="home-side">
-                <section className="side-widget">
-                  <h3>Acciones rápidas</h3>
-                  <button className="action-cta" onClick={() => nav('biblioteca')}><Upload size={18} /> Subir documento</button>
-                  <button className="action-secondary" onClick={() => nav('estandares')}><Paperclip size={18} /> Cargar evidencia</button>
+                  <button type="button" className="home-v2-see-all" onClick={() => nav('estandares')}>
+                    Ver todos los estándares <ChevronRight size={17}/>
+                  </button>
                 </section>
 
-                <section className="side-widget">
-                  <h3>Actividad reciente</h3>
-                  <div className="activity-list">
-                    {recentActivity.length ? recentActivity.map((event) => (
-                      <div key={`${event.type}-${event.id}`} className="activity-row">
-                        <div className={`activity-icon ${event.type === 'documento' ? 'doc' : 'ok'}`} />
-                        <div>
+                <section className="home-v2-card home-v2-recent">
+                  <div className="home-v2-block-heading">
+                    <div className="home-v2-heading-left">
+                      <span className="home-v2-recent-clock"><ClipboardList size={19}/></span>
+                      <h2>Actividad reciente</h2>
+                    </div>
+                    <button type="button" className="home-v2-recent-more" onClick={() => nav('biblioteca')}>
+                      Ver biblioteca <ChevronRight size={15}/>
+                    </button>
+                  </div>
+                  <div className="home-v2-activity-list">
+                    {recentActivity.length ? recentActivity.slice(0, 3).map((event) => (
+                      <button
+                        type="button"
+                        key={event.type + '-' + event.id}
+                        className="home-v2-activity"
+                        disabled={!all.some((row) => row.id === event.point_id)}
+                        onClick={() => { resetFilters(); openItem(event.point_id); }}
+                        title={`Abrir ficha ${event.point_id}`}
+                      >
+                        <span className={`home-v2-activity-file ${event.type}`}><FileText size={21}/></span>
+                        <span className="home-v2-activity-details">
                           <strong>{event.title}</strong>
                           <small>{event.subtitle}</small>
-                        </div>
-                        <span>{event.when}</span>
-                      </div>
-                    )) : <div className="empty slim"><strong>Sin actividad reciente</strong></div>}
+                        </span>
+                        <span className="home-v2-activity-date">{event.when}</span>
+                        <ChevronRight size={16}/>
+                      </button>
+                    )) : <div className="home-v2-empty">Todavía no hay actividad registrada.</div>}
                   </div>
                 </section>
-
-                <section className="side-widget promo-widget">
-                  <div>
-                    <h3>Biblioteca documental</h3>
-                    <p>Accede a normas, guías y referencias de apoyo.</p>
-                    <button className="action-secondary" onClick={() => nav('biblioteca')}>Ir a la biblioteca</button>
-                  </div>
-                </section>
-              </aside>
+              </div>
             </div>
           )}
 
           {section === 'estandares' && !selected && (
             <>
-              <div className="standards-tabs">
-                {standards.map((st) => (
-                  <button key={st.id} className={st.id === standard ? 'active' : ''} onClick={() => openStd(st.id)}>
-                    E{st.id}
-                  </button>
-                ))}
-              </div>
-              <div className="std-banner redesigned">
-                <div className="standard-id-block">{String(selectedStandard.id).padStart(2, '0')}</div>
-                <div className="banner-info">
-                  <div className="eyebrow">ESTÁNDAR {selectedStandard.id}</div>
-                  <h2>{selectedStandard.title}</h2>
-                  <p>{selectedStandard.points.length} puntos de evaluación y {selectedStandard.points.flatMap((pt) => pt.items).length} medios organizados.</p>
+              <div className="tri-intro">
+                <div>
+                  <span className="tri-kicker">GESTIÓN DE CALIDAD · FACULTAD DE DERECHO</span>
+                  <h1>Explorador de estándares</h1>
+                  <p>Consulta el avance de cada estándar y accede a sus evidencias.</p>
                 </div>
-                <div className="banner-stats">
-                  <div className="banner-percentage">
-                    <span>Progreso general</span>
-                    <b>{Math.round((selectedStandard.points.flatMap((pt) => pt.items).filter((it) => getStatus(it.id) === 'completo').length / Math.max(selectedStandard.points.flatMap((pt) => pt.items).length, 1)) * 100)}%</b>
-                  </div>
-                  <div className="progress"><i style={{ width: `${Math.round((selectedStandard.points.flatMap((pt) => pt.items).filter((it) => getStatus(it.id) === 'completo').length / Math.max(selectedStandard.points.flatMap((pt) => pt.items).length, 1)) * 100)}%` }} /></div>
-                  <div className="banner-minis">
-                    <span><b>{selectedStandard.points.length}</b>Puntos</span>
-                    <span><b>{selectedStandard.points.flatMap((pt) => pt.items).length}</b>Medios</span>
-                    <span><b>{selectedStandard.points.flatMap((pt) => pt.items).filter((it) => getDocs(it.id).length > 0).length}</b>Con archivo</span>
-                  </div>
+                <span className="tri-overview-count"><Layers3 size={16}/>{standards.length} estándares</span>
+              </div>
+              <div className="tri-overview-bar">
+                <div><Layers3 size={19}/><strong>{standards.length}</strong><span>Estándares</span></div>
+                <div><ClipboardList size={19}/><strong>{allPoints}</strong><span>Puntos</span></div>
+                <div><FileText size={19}/><strong>{all.length}</strong><span>Medios de logro</span></div>
+                <div className="tri-overview-progress">
+                  <span>Avance general</span>
+                  <strong>{generalPercent}%</strong>
+                  <span className="tri-progress"><span style={{ width: generalPercent + '%' }} /></span>
+                  <small>{complete} de {all.length} completados</small>
                 </div>
               </div>
-
-              <div className="toolbar toolbar-extended">
-                <div className="search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar estándar, código o documento..." /></div>
-                <div className="select-wrap"><Filter size={16} /><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}><option value="todos">Todos los estados</option>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}</select></div>
-                <div className="select-wrap"><select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>{EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
-                <div className="select-wrap"><select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>{TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></div>
-              </div>
-
-              {selectedStandard.points.map((pt) => {
-                const pointItems = pt.items.filter((it) => filteredMatrixItems.some((row) => row.id === it.id));
-                if (!pointItems.length) return null;
-                return (
-                  <div className="point-panel" key={pt.id}>
-                    <button className="point-head" onClick={() => setPoint(point === pt.id ? null : pt.id)}>
-                      <span className="point-code">{pt.id}</span>
-                      <span className="point-summary">
-                        <strong>Punto {pt.id}</strong>
-                        <small>{pt.criterion}</small>
-                      </span>
-                      <span className="point-count">{pointItems.length} medios</span>
-                      <ChevronRight className={point === pt.id ? 'rotated' : ''} size={17} />
-                    </button>
-                    {(point === pt.id || Boolean(query)) && (
-                      <div className="expanded-point">
-                        <div className="criterion-preview"><b>Criterio del punto</b><p>{pt.criterion}</p></div>
-                        <h3 className="subpoints-title">Subpuntos y medios de logro</h3>
-                        {pointItems.map((record) => (
-                          <div className="item-row item-row-rich" key={record.id}>
-                            <button className="item-main" onClick={() => openItem(record.id)}>
-                              <span className="item-code">{record.id}</span>
-                              <span className="item-summary">
-                                {record.text}
-                                <small>{normalizeType(record.type)} · {existenceLabel(record.matrix)} · {getDocs(record.id).length} archivo(s)</small>
-                              </span>
-                            </button>
-                            <span className={`chip ${STATUS_META[getStatus(record.id)].color}`}>{STATUS_META[getStatus(record.id)].name}</span>
-                            <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
-                          </div>
-                        ))}
+              <div className="tri-workspace">
+                <section className="tri-standards" aria-label="Lista de estándares">
+                  <header className="tri-panel-title">
+                    <h2>Estándares <span>({standards.length})</span></h2>
+                  </header>
+                  <details className="tri-standards-filter-dropdown">
+                    <summary><Filter size={15}/> Filtrar lista <ChevronRight size={15}/></summary>
+                    <aside className="tri-filters" aria-label="Filtros del explorador">
+                  <div className="tri-panel-title">
+                    <h2><Filter size={17}/> Filtros</h2>
+                    <button type="button" onClick={resetFilters}>Limpiar</button>
+                  </div>
+                  <fieldset className="tri-filter-options">
+                    <legend>Estado del estándar</legend>
+                    {([
+                      { value:'todos',label:'Todos' },
+                      { value:'completo',label:'Completo' },
+                      { value:'parcial',label:'En avance' },
+                      { value:'complementar',label:'Por complementar' },
+                      { value:'simulado',label:'Con datos simulados' },
+                      { value:'pendiente',label:'Pendiente' },
+                    ] as const).map((option) => {
+                      const count = option.value === 'todos' ? standards.length : standards.filter((st) => groupSummary(st.points.flatMap((pt) => pt.items)).kind === option.value).length;
+                      return (
+                        <label key={option.value} className={explorerStatus === option.value ? 'tri-filter-item is-checked' : 'tri-filter-item'}>
+                          <input type="radio" name="tri-standard-status" checked={explorerStatus === option.value}
+                            onChange={() => setExplorerStatus(option.value)}/>
+                          <span>{option.label}</span><small>{count}</small>
+                        </label>
+                      );
+                    })}
+                  </fieldset>
+                  <details className="tri-extra-filters">
+                    <summary>Más filtros <ChevronRight size={14}/></summary>
+                    <div className="tri-extra-fields">
+                      <label>Estado del medio
+                        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}>
+                          <option value="todos">Todos</option>
+                          {Object.entries(STATUS_META).map(([key,meta]) => <option key={key} value={key}>{meta.name}</option>)}
+                        </select>
+                      </label>
+                      <label>Existencia en matriz
+                        <select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>
+                          {EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
+                      </label>
+                      <label>Tipo de documento
+                        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                          {TYPE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                  </details>
+                </aside>
+                  </details>
+                  <div className="tri-standard-list">
+                    {standards.filter((st) => {
+                      const summary = groupSummary(st.points.flatMap((pt) => pt.items));
+                      if (explorerStatus !== 'todos' && summary.kind !== explorerStatus) return false;
+                      if (query.trim() || statusFilter !== 'todos' || existenceFilter !== 'todos' || typeFilter !== 'Todos')
+                        return st.points.some((pt) => pt.items.some((it) => filteredIds.has(it.id)));
+                      return true;
+                    }).map((st) => {
+                      const summary = groupSummary(st.points.flatMap((pt) => pt.items));
+                      return (
+                        <button type="button" key={st.id}
+                          className={standard === st.id ? 'tri-standard-item is-active' : 'tri-standard-item'}
+                          onClick={() => openStd(st.id)}
+                          aria-current={standard === st.id ? 'true' : undefined}
+                          title={st.title}>
+                          <span className="tri-standard-code">E{String(st.id).padStart(2,'0')}</span>
+                          <span className="tri-standard-copy">
+                            <strong>{st.title}</strong>
+                            <span className="tri-standard-progressline"><span style={{width: summary.percent + '%'}}/></span>
+                            <small>{summary.completed}/{summary.total} medios</small>
+                          </span>
+                          <span className="tri-standard-right">
+                            <span className={'tri-standard-state state-' + summary.kind}>{summary.percent}%</span>
+                            <ChevronRight size={16}/>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {!standards.some((st) => {
+                      const summary = groupSummary(st.points.flatMap((pt) => pt.items));
+                      return (explorerStatus === 'todos' || summary.kind === explorerStatus) &&
+                        (!query.trim() && statusFilter === 'todos' && existenceFilter === 'todos' && typeFilter === 'Todos' ||
+                          st.points.some((pt) => pt.items.some((it) => filteredIds.has(it.id))));
+                    }) && (
+                      <div className="tri-no-results">No hay estándares con esos filtros.
+                        <button type="button" onClick={resetFilters}>Limpiar filtros</button>
                       </div>
                     )}
                   </div>
-                );
-              })}
+                </section>
+                <section className="tri-details" aria-label="Detalle del estándar seleccionado">
+                  <div className="tri-selected-header">
+                    <div className="tri-selected-code">E{String(selectedStandard.id).padStart(2,'0')}</div>
+                    <div className="tri-selected-heading">
+                      <span className="tri-kicker">ESTÁNDAR {selectedStandard.id}</span>
+                      <h2>{selectedStandard.title}</h2>
+                      <p>{selectedStandard.points.length} puntos de evaluación · {selectedStandardSummary.total} medios de logro</p>
+                    </div>
+                    <div className="tri-selected-progress">
+                      <span className={'quiet-status-badge status-' + selectedStandardSummary.kind}>{selectedStandardSummary.label}</span>
+                      <strong>{selectedStandardSummary.percent}%</strong>
+                      <div className="tri-progress"><span style={{width:selectedStandardSummary.percent+'%'}}/></div>
+                    </div>
+                    <button type="button" className="tri-add-button" onClick={startQuickUpload}><Upload size={16}/> Cargar documento</button>
+                  </div>
+                  <div className="tri-points-head">
+                    <div><h3>Puntos de evaluación</h3><p>Selecciona un punto para ver sus medios de logro.</p></div>
+                    <details className="tri-standard-info">
+                      <summary><FileText size={15}/> Información del estándar</summary>
+                      <div><strong>{selectedStandard.title}</strong><p>{selectedStandard.points.length} puntos de evaluación y {selectedStandardSummary.total} medios registrados en la matriz.</p></div>
+                    </details>
+                  </div>
+                  <div className="tri-points-list">
+                    {visiblePoints.length ? visiblePoints.map((pt) => {
+                      const summary = groupSummary(pt.items);
+                      const expanded = point === pt.id || Boolean(query.trim());
+                      return (
+                        <article className={expanded ? 'tri-point is-open' : 'tri-point'} key={pt.id}>
+                          <button type="button" className="tri-point-head"
+                            aria-expanded={expanded}
+                            onClick={() => setPoint(point === pt.id ? null : pt.id)}>
+                            <span className="tri-point-code">{pt.id}</span>
+                            <span className="tri-point-name">
+                              <strong>Punto {pt.id}</strong>
+                              <small title={pt.criterion}>{pt.criterion}</small>
+                            </span>
+                            <span className="tri-point-total">{summary.completed}/{summary.total} medios</span>
+                            <span className={'quiet-status-badge status-' + summary.kind}>{summary.label}</span>
+                            <ChevronRight className="tri-point-arrow" size={16}/>
+                          </button>
+                          {expanded && (
+                            <div className="tri-point-body">
+                              <div className="tri-point-toolbar">
+                                <h4>Medios de logro ({pt.visibleItems.length})</h4>
+                                <details>
+                                  <summary><FileText size={14}/> Criterio completo</summary>
+                                  <p>{pt.criterion}</p>
+                                </details>
+                              </div>
+                              <div className="tri-media-list">
+                                {pt.visibleItems.map((it) => (
+                                  <div className="tri-media-item" key={it.id}>
+                                    <button type="button" className="tri-media-main"
+                                      onClick={() => openItem(it.id)} title={'Ver información de ' + it.id}>
+                                      <span className="tri-media-code">{it.id}</span>
+                                      <span className="tri-media-description">
+                                        <strong title={it.text || normalizeType(it.type)}>{it.text?.trim() || normalizeType(it.type)}</strong>
+                                        <small>{normalizeType(it.type)}</small>
+                                      </span>
+                                    </button>
+                                    <span className={'quiet-status-badge status-' + getStatus(it.id)}>{STATUS_META[getStatus(it.id)].name}</span>
+                                    <span className="tri-media-files"><Paperclip size={14}/>{getDocs(it.id).length}</span>
+                                    <button type="button" className="tri-media-upload" onClick={() => openQuickUploadFor(it.id)}
+                                      aria-label={'Cargar documento en el medio ' + it.id}>
+                                      <Upload size={15}/> Cargar documento
+                                    </button>
+                                    <button type="button" className="tri-media-detail" onClick={() => openItem(it.id)}
+                                      aria-label={'Ver ficha del medio ' + it.id}>
+                                      Ver ficha <ChevronRight size={15}/>
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </article>
+                      );
+                    }) : (
+                      <div className="tri-no-results">No hay puntos coincidentes con la búsqueda.
+                        <button type="button" onClick={resetFilters}>Limpiar filtros</button>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </div>
             </>
           )}
 
@@ -791,28 +1378,55 @@ setBusy(false);
 {selected && (
   <section className="evidence-page">
 
-    {/* ENCABEZADO DEL PUNTO */}
-    <div className="evidence-heading">
+    {/* Cabecera compacta: lo esencial primero y el detalle bajo demanda. */}
+    <div className="evidence-heading evidence-heading-refined">
       <button
+        type="button"
         className="back"
-        onClick={() => setItem(null)}
+        onClick={() => {setItem(null);setShowRequirements(false);}}
       >
         <ArrowLeft size={16} />
-        Estándar {selected.standard} / Punto {selected.id}
+        Estándar {selected.standard} / Medio {selected.id}
       </button>
 
-      <h1>Punto {selected.id}</h1>
-      <p>{selected.text || selected.criterion}</p>
+      <div className="evidence-hero">
+        <div className="evidence-hero-icon"><FileText size={27} aria-hidden="true" /></div>
+        <div className="evidence-hero-description">
+          <span className="evidence-standard-pill">Estándar {selected.standard} · {selected.standardTitle}</span>
+          <h1>Medio de logro {selected.id}</h1>
+          <p>{selected.text || selected.criterion}</p>
+        </div>
+      </div>
+
+      <div className="evidence-key-actions">
+        <div className="evidence-key-metrics" aria-label="Resumen del medio">
+          <span className={'evidence-key-chip evidence-key-status state-' + getStatus(selected.id)}>
+            {getStatus(selected.id) === 'completo' ? <CheckCircle2 size={16}/> : <Info size={16}/>}
+            Estado: {STATUS_META[getStatus(selected.id)].name}
+          </span>
+          <span className="evidence-key-chip"><FileText size={16}/>{getDocs(selected.id).length} documento(s)</span>
+          <span className="evidence-key-chip">
+            <MessageCircle size={16}/>
+            {getDocs(selected.id).reduce((total,doc)=>total+commentCounts(doc.id),0)} comentario(s)
+          </span>
+        </div>
+        <button type="button" className="requirements-view-button" onClick={()=>setShowRequirements(true)}>
+          <BookOpen size={17}/> Ver qué solicita este medio <ChevronRight size={17}/>
+        </button>
+      </div>
     </div>
 
     {/* CARGA Y ESTADO */}
-    <div className="evidence-top-grid">
+    <div className="evidence-top-grid evidence-top-grid-refined">
 
       <div className="evidence-card evidence-upload" id="carga-evidencia">
         <div className="evidence-card-title">
-          <Upload size={20} />
-          <h2>Subir documento</h2>
-          <span>Medio {selected.id}</span>
+          <span className="evidence-card-title-icon"><Upload size={21} /></span>
+          <div className="evidence-upload-title">
+            <h2>{uploadFromMedia ? 'Cargar documento' : 'Subir documento'}</h2>
+            <small>Adjunta el archivo que sustenta este medio de logro.</small>
+          </div>
+          <span className="evidence-upload-medium">Medio {selected.id}</span>
         </div>
 
         {!sb && (
@@ -822,7 +1436,7 @@ setBusy(false);
         )}
 
         <label
-          className="evidence-dropzone"
+          className="evidence-dropzone evidence-dropzone-refined"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
@@ -837,7 +1451,7 @@ setBusy(false);
                 ? files.map(f => f.name).join(', ')
                 : 'Arrastra archivos o selecciónalos'}
             </strong>
-            <small>PDF, Word, Excel o imágenes · Máximo 15 MB</small>
+            <small>PDF, Word, Excel o imágenes · Máximo 15 MB por archivo</small>
           </div>
           <span className="evidence-select-file">
             Seleccionar archivos
@@ -856,15 +1470,8 @@ setBusy(false);
 
         <div className="evidence-form-grid">
           <div className="evidence-field">
-            <label htmlFor="evidence-uploader">
-              Colaborador <small>(opcional)</small>
-            </label>
-            <input
-              id="evidence-uploader"
-              value={uploader}
-              onChange={(e) => setUploader(e.target.value)}
-              placeholder="Nombre o área"
-            />
+            <label htmlFor="evidence-uploader">Registrado por</label>
+            <input id="evidence-uploader" value={identity.full_name} disabled readOnly title="Nombre de tu cuenta"/>
           </div>
 
           <div className="evidence-field">
@@ -934,13 +1541,7 @@ setBusy(false);
         </div>
       </div>
 
-      {/* ESTADO ACTUAL */}
-      <aside className="evidence-card evidence-status-card">
-        <span>Estado:</span>
-        <strong className={`evidence-state state-${getStatus(selected.id)}`}>
-          {STATUS_META[getStatus(selected.id)].name}
-        </strong>
-      </aside>
+      {/* El estado ya se muestra en el resumen superior para evitar duplicidad. */}
     </div>
 
     {/* DOCUMENTOS ADJUNTOS */}
@@ -951,7 +1552,7 @@ setBusy(false);
             <Paperclip size={20} />
             Documentos adjuntos
           </h2>
-          <small>{getDocs(selected.id).length} archivo(s)</small>
+          <small className="evidence-documents-count">{getDocs(selected.id).length} archivo(s)</small>
         </div>
 
         <button
@@ -965,7 +1566,7 @@ setBusy(false);
               })
           }
         >
-          + Agregar documento
+          <Upload size={15}/> Agregar documento
         </button>
       </div>
 
@@ -1019,15 +1620,22 @@ setBusy(false);
                 >
                   <Download size={17} />
                 </button>
-
-                <button
-                  type="button"
-                  title="Eliminar"
-                  aria-label={`Eliminar ${doc.file_name}`}
-                  onClick={() => setDeleteTarget(doc)}
-                >
-                  <Trash2 size={17} />
+                <button type="button" className="feedback-open-action" onClick={()=>setFeedbackDoc(doc)}
+                  title="Comentar o solicitar corrección" aria-label={`Comentarios sobre ${doc.file_name}`}>
+                  <MessageCircle size={17}/>
+                  {commentCounts(doc.id)>0&&<span className={pendingComments(doc.id)>0?'feedback-count is-pending':'feedback-count'} title={pendingComments(doc.id)>0?'Hay solicitudes de corrección pendientes':'Comentarios registrados'}>{commentCounts(doc.id)}</span>}
                 </button>
+
+                {(identity.role === 'admin' || doc.uploaded_by === identity.id) && (
+                  <button
+                    type="button"
+                    title="Eliminar"
+                    aria-label={`Eliminar ${doc.file_name}`}
+                    onClick={() => setDeleteTarget(doc)}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -1041,58 +1649,6 @@ setBusy(false);
       )}
     </div>
 
-    {/* REQUISITO DOCUMENTAL PLEGABLE */}
-    <details className="evidence-card evidence-requirement">
-      
-        <summary>
-          <FileText size={20} />
-
-          <strong>Detalle del registro documental</strong>
-
-          <ChevronRight
-            size={18}
-            className="evidence-chevron"
-          />
-        </summary>
-
-
-      <div className="evidence-requirement-body">
-        <h3>Criterio de evaluación</h3>
-        <p>{fmt(selected.criterion)}</p>
-
-        <h3>Información de la matriz</h3>
-        <dl className="metadata">
-          <dt>Existencia declarada</dt>
-          <dd>{fmt(selected.matrix)}</dd>
-
-          <dt>Tipo documental</dt>
-          <dd>{normalizeType(selected.type)}</dd>
-
-          <dt>Alcance</dt>
-          <dd>{fmt(selected.scope)}</dd>
-
-          <dt>Dependencia responsable</dt>
-          <dd>{fmt(selected.responsible)}</dd>
-
-          <dt>Gestor responsable</dt>
-          <dd>{fmt(selected.manager)}</dd>
-        </dl>
-
-        {selected.gap && (
-          <>
-            <h3>Brecha registrada</h3>
-            <p>{selected.gap}</p>
-          </>
-        )}
-
-        {selected.action && (
-          <>
-            <h3>Acción prevista</h3>
-            <p>{selected.action}</p>
-          </>
-        )}
-      </div>
-    </details>
   </section>
 )}
 
@@ -1130,8 +1686,13 @@ setBusy(false);
                     <div className="library-actions">
                       <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
                       <button className="document-action" type="button" onClick={() => void openPreview(doc)} title="Vista previa" aria-label={`Vista previa de ${doc.file_name}`}><Eye size={16} /></button>
+                      <button className="document-action feedback-open-action" type="button" onClick={() => setFeedbackDoc(doc)}
+                        title="Comentar o solicitar corrección" aria-label={`Comentar ${doc.file_name}`}>
+                        <MessageCircle size={16}/>
+                        {commentCounts(doc.id)>0&&<span className={pendingComments(doc.id)>0?'feedback-count is-pending':'feedback-count'} title={pendingComments(doc.id)>0?'Hay solicitudes de corrección pendientes':'Comentarios registrados'}>{commentCounts(doc.id)}</span>}
+                      </button>
                       <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
-                      <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento" aria-label={`Eliminar ${doc.file_name}`}><Trash2 size={16} /></button>
+                      {(identity.role === 'admin' || doc.uploaded_by === identity.id) && <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento" aria-label={`Eliminar ${doc.file_name}`}><Trash2 size={16} /></button>}
                     </div>
                   </div>
                 ))}
@@ -1175,6 +1736,26 @@ setBusy(false);
         </div>
       </div>
 
+      {showRequirements && selected && (
+        <StandardRequirementsDrawer
+          record={selected}
+          statusLabel={STATUS_META[getStatus(selected.id)].name}
+          documentCount={getDocs(selected.id).length}
+          onClose={()=>setShowRequirements(false)}
+          onUpload={()=>{
+            setShowRequirements(false);
+            window.requestAnimationFrame(()=>document.getElementById('carga-evidencia')?.scrollIntoView({behavior:'smooth',block:'start'}));
+          }}
+        />
+      )}
+      {feedbackDoc && (
+        <DocumentFeedback
+          document={feedbackDoc}
+          identity={identity}
+          onClose={()=>setFeedbackDoc(null)}
+          onChanged={()=>void refresh()}
+        />
+      )}
       {previewDoc && (
         <div className="modal-overlay preview-overlay" onMouseDown={(e) => { if (e.currentTarget === e.target) closePreview(); }} role="presentation">
           <section role="dialog" aria-modal="true" aria-labelledby="preview-title" className="preview-dialog">
@@ -1199,6 +1780,9 @@ setBusy(false);
             </div>
             <div className="preview-actions">
               <button type="button" className="cancel-delete" onClick={closePreview}>Cerrar</button>
+              <button type="button" className="feedback-preview-button" onClick={()=>{setFeedbackDoc(previewDoc);closePreview();}}>
+                <MessageCircle size={16}/> Comentarios {commentCounts(previewDoc.id)>0?`(${commentCounts(previewDoc.id)})`:''}
+              </button>
               <button type="button" className="confirm-delete" onClick={() => void downloadDoc(previewDoc)}><Download size={16} /> Descargar</button>
             </div>
           </section>
