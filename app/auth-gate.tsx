@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useState,type ReactNode,type FormEvent} from 'react';
+import {useEffect,useRef,useState,type ReactNode,type FormEvent} from 'react';
 import type {User} from '@supabase/supabase-js';
 import {Landmark,Mail,LockKeyhole,LogIn,LogOut,UserRound,UserPlus,RefreshCw} from 'lucide-react';
 import {client} from '../lib/supabase';
@@ -23,39 +23,73 @@ export function AuthGate({children}:{children:(identity:ApprovedIdentity)=>React
   const [message,setMessage]=useState('');
   const [error,setError]=useState('');
   const [reload,setReload]=useState(0);
+  const activeAuthId = useRef<string|null>(null);
 
+
+  // Supabase puede emitir SIGNED_IN/TOKEN_REFRESHED de nuevo al regresar a una pestaña.
+  // Solo comprobamos el perfil si cambia la identidad; la renovación de token no bloquea la interfaz.
   useEffect(()=>{
     if(!sb){setBooting(false);return;}
     let active=true;
-    const {data:{subscription}}=sb.auth.onAuthStateChange((_event,session)=>{
+    const applyUser=(next:User|null)=>{
       if(!active)return;
-      setUser(session?.user??null);
-      setProfileLoading(Boolean(session?.user));
+      const nextId=next?.id??null;
+      if(activeAuthId.current!==nextId){
+        activeAuthId.current=nextId;
+        setProfile(null);
+        setProfileError('');
+        setProfileLoading(Boolean(next));
+      }
+      setUser((previous)=>previous?.id===nextId?previous:next);
       setBooting(false);
+    };
+    const {data:{subscription}}=sb.auth.onAuthStateChange((_event,session)=>{
+      applyUser(session?.user??null);
     });
+    // Verificar al cargar por primera vez, pero no revalidar toda la UI en cada TOKEN_REFRESHED.
     void sb.auth.getUser().then(({data,error:authError})=>{
       if(!active)return;
-      setUser(authError?null:data.user);
-      setProfileLoading(Boolean(!authError&&data.user));
-      setBooting(false);
-    }).catch(()=>{if(active){setUser(null);setBooting(false);}});
+      if(!authError)applyUser(data.user);
+      else if(activeAuthId.current===null)applyUser(null);
+    }).catch(()=>{if(active&&activeAuthId.current===null)applyUser(null);});
     return ()=>{active=false;subscription.unsubscribe();};
-  },[]);
+  },[sb]);
 
   useEffect(()=>{
-    if(!sb||!user){setProfile(null);setProfileLoading(false);return;}
+    if(!sb||!user){
+      setProfile(null);
+      setProfileLoading(false);
+      return;
+    }
     let active=true;
     setProfileLoading(true);
     setProfileError('');
-    void sb.from('profiles').select('id,full_name,approved,role')
-      .eq('id',user.id).maybeSingle().then(({data,error:readError})=>{
-        if(!active)return;
-        setProfile(readError?null:data as AccountProfile|null);
-        setProfileError(readError?.message||'');
-        setProfileLoading(false);
-      });
-    return ()=>{active=false;};
-  },[user?.id,reload]);
+
+    // Si hay problemas de conexión, mostrar un error recuperable en vez de una carga infinita.
+    const timeout=window.setTimeout(()=>{
+      if(!active)return;
+      setProfileError('La comprobación del perfil está tardando demasiado. Comprueba la conexión y vuelve a intentarlo.');
+      setProfileLoading(false);
+    },15000);
+
+    void Promise.resolve(
+      sb.from('profiles').select('id,full_name,approved,role')
+        .eq('id',user.id).maybeSingle()
+    ).then(({data,error:readError})=>{
+      if(!active)return;
+      window.clearTimeout(timeout);
+      setProfile(readError?null:data as AccountProfile|null);
+      setProfileError(readError?.message||'');
+      setProfileLoading(false);
+    }).catch((reason:unknown)=>{
+      if(!active)return;
+      window.clearTimeout(timeout);
+      setProfile(null);
+      setProfileError(reason instanceof Error?reason.message:'No se pudo comprobar el perfil. Intenta de nuevo.');
+      setProfileLoading(false);
+    });
+    return ()=>{active=false;window.clearTimeout(timeout);};
+  },[sb,user?.id,reload]);
 
   async function submit(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
