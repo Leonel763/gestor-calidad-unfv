@@ -23,6 +23,7 @@ import {
   Search,
   Trash2,
   Upload,
+  Info,
   LogOut,
   UserRound,
   MessageCircle,
@@ -31,6 +32,7 @@ import {
 } from 'lucide-react';
 import {AuthGate, type ApprovedIdentity} from './auth-gate';
 import {DocumentFeedback, type DocumentCommentBrief} from './document-feedback';
+import {StandardRequirementsDrawer} from './standard-requirements-drawer';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
 
@@ -44,6 +46,8 @@ type Item = {
   manager: string;
   gap: string;
   action: string;
+  proposal?: string;
+  observations?: string;
 };
 type Point = { id: string; criterion: string; items: Item[] };
 type Standard = { id: number; title: string; points: Point[] };
@@ -171,6 +175,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [standard, setStandard] = useState<number>(1);
   const [point, setPoint] = useState<string | null>('1.1');
   const [item, setItem] = useState<string | null>(null);
+  const [showRequirements,setShowRequirements] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | Status>('todos');
   const [existenceFilter, setExistenceFilter] = useState<'todos' | Existence>('todos');
@@ -493,6 +498,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     setStandard(record.standard);
     setPoint(record.point);
     setItem(record.id);
+    setShowRequirements(false);
     setUploadFromMedia(forUpload);
     setFiles([]);
     setUploadStatus('');
@@ -1376,7 +1382,7 @@ setBusy(false);
     <div className="evidence-heading">
       <button
         className="back"
-        onClick={() => setItem(null)}
+        onClick={() => {setItem(null);setShowRequirements(false);}}
       >
         <ArrowLeft size={16} />
         Estándar {selected.standard} / Punto {selected.id}
@@ -1384,6 +1390,9 @@ setBusy(false);
 
       <h1>Punto {selected.id}</h1>
       <p>{selected.text || selected.criterion}</p>
+      <button type="button" className="requirements-view-button" onClick={()=>setShowRequirements(true)}>
+        <Info size={17}/> Ver qué solicita este medio <ChevronRight size={17}/>
+      </button>
     </div>
 
     {/* CARGA Y ESTADO */}
@@ -1622,58 +1631,16 @@ setBusy(false);
       )}
     </div>
 
-    {/* REQUISITO DOCUMENTAL PLEGABLE */}
-    <details className="evidence-card evidence-requirement">
-      
-        <summary>
-          <FileText size={20} />
-
-          <strong>Detalle del registro documental</strong>
-
-          <ChevronRight
-            size={18}
-            className="evidence-chevron"
-          />
-        </summary>
-
-
-      <div className="evidence-requirement-body">
-        <h3>Criterio de evaluación</h3>
-        <p>{fmt(selected.criterion)}</p>
-
-        <h3>Información de la matriz</h3>
-        <dl className="metadata">
-          <dt>Existencia declarada</dt>
-          <dd>{fmt(selected.matrix)}</dd>
-
-          <dt>Tipo documental</dt>
-          <dd>{normalizeType(selected.type)}</dd>
-
-          <dt>Alcance</dt>
-          <dd>{fmt(selected.scope)}</dd>
-
-          <dt>Dependencia responsable</dt>
-          <dd>{fmt(selected.responsible)}</dd>
-
-          <dt>Gestor responsable</dt>
-          <dd>{fmt(selected.manager)}</dd>
-        </dl>
-
-        {selected.gap && (
-          <>
-            <h3>Brecha registrada</h3>
-            <p>{selected.gap}</p>
-          </>
-        )}
-
-        {selected.action && (
-          <>
-            <h3>Acción prevista</h3>
-            <p>{selected.action}</p>
-          </>
-        )}
-      </div>
-    </details>
+    {/* Los criterios completos se consultan en el panel lateral, sin recargar la ficha. */}
+    <button type="button" className="evidence-card requirements-inline-entry"
+      onClick={()=>setShowRequirements(true)}>
+      <span className="requirements-inline-icon"><BookOpen size={19}/></span>
+      <span>
+        <strong>Información y requisitos del medio</strong>
+        <small>Consulta el criterio oficial y los datos de la matriz.</small>
+      </span>
+      <ChevronRight size={19}/>
+    </button>
   </section>
 )}
 
@@ -1761,6 +1728,18 @@ setBusy(false);
         </div>
       </div>
 
+      {showRequirements && selected && (
+        <StandardRequirementsDrawer
+          record={selected}
+          statusLabel={STATUS_META[getStatus(selected.id)].name}
+          documentCount={getDocs(selected.id).length}
+          onClose={()=>setShowRequirements(false)}
+          onUpload={()=>{
+            setShowRequirements(false);
+            window.requestAnimationFrame(()=>document.getElementById('carga-evidencia')?.scrollIntoView({behavior:'smooth',block:'start'}));
+          }}
+        />
+      )}
       {feedbackDoc && (
         <DocumentFeedback
           document={feedbackDoc}
