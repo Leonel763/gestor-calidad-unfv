@@ -1335,3 +1335,59 @@
 .feedback-send:disabled{opacity:.5;cursor:not-allowed}
 .feedback-preview-button{display:flex;align-items:center;gap:7px;border:1px solid #b7dcc6;color:#1c7455;background:#edf8f1;border-radius:8px;padding:9px 12px;font-size:11px;font-weight:800}
 @media(max-width:600px){.feedback-overlay{padding:8px}.feedback-dialog{max-height:calc(100dvh - 16px)}.feedback-header{padding:14px}.feedback-content{padding:0 14px 14px}.feedback-summary{padding:11px 14px}.feedback-header h2{font-size:16px}.feedback-request-label{font-size:9px}.feedback-comment-top{flex-wrap:wrap}.feedback-comment-author{min-width:90px}.feedback-message-help{flex-wrap:wrap}}
+
+
+/* Comentarios: icono verdaderamente centrado y un solo contador en la esquina superior */
+.evidence-actions .feedback-open-action,
+.library-actions .feedback-open-action{
+  position:relative!important;
+  display:grid!important;
+  place-items:center!important;
+  flex:0 0 36px!important;
+  width:36px!important;
+  height:36px!important;
+  min-width:36px!important;
+  padding:0!important;
+  border-radius:9px;
+  overflow:visible!important;
+  line-height:1;
+}
+.evidence-actions .feedback-open-action>svg,
+.library-actions .feedback-open-action>svg{
+  display:block;
+  width:17px;
+  height:17px;
+  margin:0;
+}
+.evidence-actions .feedback-count,
+.library-actions .feedback-count{
+  position:absolute;
+  z-index:2;
+  top:-6px;
+  right:-6px;
+  left:auto;
+  bottom:auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:17px;
+  width:auto;
+  height:17px;
+  padding:0 4px;
+  margin:0;
+  line-height:1;
+  font-size:10px;
+  font-weight:800;
+  font-variant-numeric:tabular-nums;
+  border:2px solid #fff;
+  border-radius:999px;
+  background:#e4f4e9;
+  color:#186b4b;
+  box-sizing:content-box;
+  pointer-events:none;
+}
+.evidence-actions .feedback-count.is-pending,
+.library-actions .feedback-count.is-pending{
+  background:#f4d79d;
+  color:#855311;
+}
