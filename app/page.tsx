@@ -1378,31 +1378,55 @@ setBusy(false);
 {selected && (
   <section className="evidence-page">
 
-    {/* ENCABEZADO DEL PUNTO */}
-    <div className="evidence-heading">
+    {/* Cabecera compacta: lo esencial primero y el detalle bajo demanda. */}
+    <div className="evidence-heading evidence-heading-refined">
       <button
+        type="button"
         className="back"
         onClick={() => {setItem(null);setShowRequirements(false);}}
       >
         <ArrowLeft size={16} />
-        Estándar {selected.standard} / Punto {selected.id}
+        Estándar {selected.standard} / Medio {selected.id}
       </button>
 
-      <h1>Punto {selected.id}</h1>
-      <p>{selected.text || selected.criterion}</p>
-      <button type="button" className="requirements-view-button" onClick={()=>setShowRequirements(true)}>
-        <Info size={17}/> Ver qué solicita este medio <ChevronRight size={17}/>
-      </button>
+      <div className="evidence-hero">
+        <div className="evidence-hero-icon"><FileText size={27} aria-hidden="true" /></div>
+        <div className="evidence-hero-description">
+          <span className="evidence-standard-pill">Estándar {selected.standard} · {selected.standardTitle}</span>
+          <h1>Medio de logro {selected.id}</h1>
+          <p>{selected.text || selected.criterion}</p>
+        </div>
+      </div>
+
+      <div className="evidence-key-actions">
+        <div className="evidence-key-metrics" aria-label="Resumen del medio">
+          <span className={'evidence-key-chip evidence-key-status state-' + getStatus(selected.id)}>
+            {getStatus(selected.id) === 'completo' ? <CheckCircle2 size={16}/> : <Info size={16}/>}
+            Estado: {STATUS_META[getStatus(selected.id)].name}
+          </span>
+          <span className="evidence-key-chip"><FileText size={16}/>{getDocs(selected.id).length} documento(s)</span>
+          <span className="evidence-key-chip">
+            <MessageCircle size={16}/>
+            {getDocs(selected.id).reduce((total,doc)=>total+commentCounts(doc.id),0)} comentario(s)
+          </span>
+        </div>
+        <button type="button" className="requirements-view-button" onClick={()=>setShowRequirements(true)}>
+          <BookOpen size={17}/> Ver qué solicita este medio <ChevronRight size={17}/>
+        </button>
+      </div>
     </div>
 
     {/* CARGA Y ESTADO */}
-    <div className="evidence-top-grid">
+    <div className="evidence-top-grid evidence-top-grid-refined">
 
       <div className="evidence-card evidence-upload" id="carga-evidencia">
         <div className="evidence-card-title">
-          <Upload size={20} />
-          <h2>{uploadFromMedia ? 'Cargar documento' : 'Subir documento'}</h2>
-          <span>Medio {selected.id}</span>
+          <span className="evidence-card-title-icon"><Upload size={21} /></span>
+          <div className="evidence-upload-title">
+            <h2>{uploadFromMedia ? 'Cargar documento' : 'Subir documento'}</h2>
+            <small>Adjunta el archivo que sustenta este medio de logro.</small>
+          </div>
+          <span className="evidence-upload-medium">Medio {selected.id}</span>
         </div>
 
         {!sb && (
@@ -1412,7 +1436,7 @@ setBusy(false);
         )}
 
         <label
-          className="evidence-dropzone"
+          className="evidence-dropzone evidence-dropzone-refined"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
@@ -1427,7 +1451,7 @@ setBusy(false);
                 ? files.map(f => f.name).join(', ')
                 : 'Arrastra archivos o selecciónalos'}
             </strong>
-            <small>PDF, Word, Excel o imágenes · Máximo 15 MB</small>
+            <small>PDF, Word, Excel o imágenes · Máximo 15 MB por archivo</small>
           </div>
           <span className="evidence-select-file">
             Seleccionar archivos
@@ -1517,13 +1541,7 @@ setBusy(false);
         </div>
       </div>
 
-      {/* ESTADO ACTUAL */}
-      <aside className="evidence-card evidence-status-card">
-        <span>Estado:</span>
-        <strong className={`evidence-state state-${getStatus(selected.id)}`}>
-          {STATUS_META[getStatus(selected.id)].name}
-        </strong>
-      </aside>
+      {/* El estado ya se muestra en el resumen superior para evitar duplicidad. */}
     </div>
 
     {/* DOCUMENTOS ADJUNTOS */}
@@ -1534,7 +1552,7 @@ setBusy(false);
             <Paperclip size={20} />
             Documentos adjuntos
           </h2>
-          <small>{getDocs(selected.id).length} archivo(s)</small>
+          <small className="evidence-documents-count">{getDocs(selected.id).length} archivo(s)</small>
         </div>
 
         <button
@@ -1548,7 +1566,7 @@ setBusy(false);
               })
           }
         >
-          + Agregar documento
+          <Upload size={15}/> Agregar documento
         </button>
       </div>
 
@@ -1631,16 +1649,6 @@ setBusy(false);
       )}
     </div>
 
-    {/* Los criterios completos se consultan en el panel lateral, sin recargar la ficha. */}
-    <button type="button" className="evidence-card requirements-inline-entry"
-      onClick={()=>setShowRequirements(true)}>
-      <span className="requirements-inline-icon"><BookOpen size={19}/></span>
-      <span>
-        <strong>Información y requisitos del medio</strong>
-        <small>Consulta el criterio oficial y los datos de la matriz.</small>
-      </span>
-      <ChevronRight size={19}/>
-    </button>
   </section>
 )}
 
