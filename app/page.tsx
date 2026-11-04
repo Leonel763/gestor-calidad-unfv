@@ -802,7 +802,7 @@ setBusy(false);
           <button type="button" className="simple-brand" onClick={() => nav('inicio')} aria-label="Ir a Inicio">
             <span className="simple-brand-symbol"><Landmark size={23} /></span>
             <span className="simple-brand-copy">
-              <strong>UNFV <span className="simple-brand-divider" aria-hidden="true" /> Gestión de Calidad</strong>
+              <strong>UNFV <span className="simple-brand-divider" aria-hidden="true" /><span className="simple-brand-fullname">Gestión de Calidad</span></strong>
               <small>Facultad de Derecho</small>
             </span>
           </button>
@@ -848,7 +848,7 @@ setBusy(false);
           </div>
           <button type="button" className="header-upload-button" onClick={startQuickUpload}>
             <Upload size={17} aria-hidden="true" />
-            <span>Cargar documento</span>
+            <span className="header-upload-long-label">Cargar documento</span><span className="header-upload-short-label">Subir</span>
           </button>
         </header>
 
