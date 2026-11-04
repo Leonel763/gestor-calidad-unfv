@@ -1596,8 +1596,7 @@ setBusy(false);
                 <button type="button" className="feedback-open-action" onClick={()=>setFeedbackDoc(doc)}
                   title="Comentar o solicitar corrección" aria-label={`Comentarios sobre ${doc.file_name}`}>
                   <MessageCircle size={17}/>
-                  {commentCounts(doc.id)>0&&<span className="feedback-count">{commentCounts(doc.id)}</span>}
-                  {pendingComments(doc.id)>0&&<span className="feedback-warning-dot" title="Hay solicitudes de corrección pendientes"/>}
+                  {commentCounts(doc.id)>0&&<span className={pendingComments(doc.id)>0?'feedback-count is-pending':'feedback-count'} title={pendingComments(doc.id)>0?'Hay solicitudes de corrección pendientes':'Comentarios registrados'}>{commentCounts(doc.id)}</span>}
                 </button>
 
                 {(identity.role === 'admin' || doc.uploaded_by === identity.id) && (
@@ -1715,8 +1714,7 @@ setBusy(false);
                       <button className="document-action feedback-open-action" type="button" onClick={() => setFeedbackDoc(doc)}
                         title="Comentar o solicitar corrección" aria-label={`Comentar ${doc.file_name}`}>
                         <MessageCircle size={16}/>
-                        {commentCounts(doc.id)>0&&<span className="feedback-count">{commentCounts(doc.id)}</span>}
-                        {pendingComments(doc.id)>0&&<span className="feedback-warning-dot"/>}
+                        {commentCounts(doc.id)>0&&<span className={pendingComments(doc.id)>0?'feedback-count is-pending':'feedback-count'} title={pendingComments(doc.id)>0?'Hay solicitudes de corrección pendientes':'Comentarios registrados'}>{commentCounts(doc.id)}</span>}
                       </button>
                       <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
                       {(identity.role === 'admin' || doc.uploaded_by === identity.id) && <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento" aria-label={`Eliminar ${doc.file_name}`}><Trash2 size={16} /></button>}
