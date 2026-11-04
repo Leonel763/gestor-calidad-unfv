@@ -25,9 +25,12 @@ import {
   Upload,
   LogOut,
   UserRound,
+  MessageCircle,
+  AlertTriangle,
   X,
 } from 'lucide-react';
 import {AuthGate, type ApprovedIdentity} from './auth-gate';
+import {DocumentFeedback, type DocumentCommentBrief} from './document-feedback';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
 
@@ -195,6 +198,14 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [deleteTarget, setDeleteTarget] = useState<Evidence | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<Evidence | null>(null);
+  const [feedbackDoc,setFeedbackDoc] = useState<Evidence|null>(null);
+  const [commentBriefs,setCommentBriefs] = useState<DocumentCommentBrief[]>([]);
+  const commentCounts=(id:string)=>commentBriefs.filter(comment=>comment.evidence_id===id).length;
+  const pendingComments=(id:string)=>commentBriefs.filter(comment=>
+    comment.evidence_id===id &&
+    comment.comment_type==='solicitar_correccion' &&
+    comment.status==='abierto'
+  ).length;
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const previewRequest = useRef(0);
@@ -223,14 +234,17 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
 
   const refresh = async () => {
     if (!sb || !identity.approved) return;
-    const [docsRes, trackingRes] = await Promise.all([
+    const [docsRes, trackingRes, commentRes] = await Promise.all([
       sb.from('evidencias').select('*').order('created_at', { ascending: false }),
       sb.from('seguimiento').select('*'),
+      sb.from('document_comments').select('evidence_id,comment_type,status'),
     ]);
     if (docsRes.error) showAlert(`No se pudo consultar la biblioteca: ${docsRes.error.message}`);
     else setDocuments((docsRes.data || []) as Evidence[]);
     if (trackingRes.error) showAlert(`No se pudo consultar el seguimiento: ${trackingRes.error.message}`);
     else setTracking((trackingRes.data || []) as Tracking[]);
+    if (commentRes.error) showAlert(`No se pudieron consultar las observaciones: ${commentRes.error.message}`);
+    else setCommentBriefs((commentRes.data || []) as DocumentCommentBrief[]);
   };
 
   useEffect(() => {
@@ -244,6 +258,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       .channel('gestor-compartido')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'evidencias' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'seguimiento' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'document_comments' }, reload)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') reload();
       });
@@ -1578,6 +1593,12 @@ setBusy(false);
                 >
                   <Download size={17} />
                 </button>
+                <button type="button" className="feedback-open-action" onClick={()=>setFeedbackDoc(doc)}
+                  title="Comentar o solicitar corrección" aria-label={`Comentarios sobre ${doc.file_name}`}>
+                  <MessageCircle size={17}/>
+                  {commentCounts(doc.id)>0&&<span className="feedback-count">{commentCounts(doc.id)}</span>}
+                  {pendingComments(doc.id)>0&&<span className="feedback-warning-dot" title="Hay solicitudes de corrección pendientes"/>}
+                </button>
 
                 {(identity.role === 'admin' || doc.uploaded_by === identity.id) && (
                   <button
@@ -1691,6 +1712,12 @@ setBusy(false);
                     <div className="library-actions">
                       <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
                       <button className="document-action" type="button" onClick={() => void openPreview(doc)} title="Vista previa" aria-label={`Vista previa de ${doc.file_name}`}><Eye size={16} /></button>
+                      <button className="document-action feedback-open-action" type="button" onClick={() => setFeedbackDoc(doc)}
+                        title="Comentar o solicitar corrección" aria-label={`Comentar ${doc.file_name}`}>
+                        <MessageCircle size={16}/>
+                        {commentCounts(doc.id)>0&&<span className="feedback-count">{commentCounts(doc.id)}</span>}
+                        {pendingComments(doc.id)>0&&<span className="feedback-warning-dot"/>}
+                      </button>
                       <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
                       {(identity.role === 'admin' || doc.uploaded_by === identity.id) && <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento" aria-label={`Eliminar ${doc.file_name}`}><Trash2 size={16} /></button>}
                     </div>
@@ -1736,6 +1763,14 @@ setBusy(false);
         </div>
       </div>
 
+      {feedbackDoc && (
+        <DocumentFeedback
+          document={feedbackDoc}
+          identity={identity}
+          onClose={()=>setFeedbackDoc(null)}
+          onChanged={()=>void refresh()}
+        />
+      )}
       {previewDoc && (
         <div className="modal-overlay preview-overlay" onMouseDown={(e) => { if (e.currentTarget === e.target) closePreview(); }} role="presentation">
           <section role="dialog" aria-modal="true" aria-labelledby="preview-title" className="preview-dialog">
@@ -1760,6 +1795,9 @@ setBusy(false);
             </div>
             <div className="preview-actions">
               <button type="button" className="cancel-delete" onClick={closePreview}>Cerrar</button>
+              <button type="button" className="feedback-preview-button" onClick={()=>{setFeedbackDoc(previewDoc);closePreview();}}>
+                <MessageCircle size={16}/> Comentarios {commentCounts(previewDoc.id)>0?`(${commentCounts(previewDoc.id)})`:''}
+              </button>
               <button type="button" className="confirm-delete" onClick={() => void downloadDoc(previewDoc)}><Download size={16} /> Descargar</button>
             </div>
           </section>
