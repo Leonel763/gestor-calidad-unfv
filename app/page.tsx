@@ -1579,14 +1579,16 @@ setBusy(false);
                   <Download size={17} />
                 </button>
 
-                <button
-                  type="button"
-                  title="Eliminar"
-                  aria-label={`Eliminar ${doc.file_name}`}
-                  onClick={() => setDeleteTarget(doc)}
-                >
-                  <Trash2 size={17} />
-                </button>
+                {(identity.role === 'admin' || doc.uploaded_by === identity.id) && (
+                  <button
+                    type="button"
+                    title="Eliminar"
+                    aria-label={`Eliminar ${doc.file_name}`}
+                    onClick={() => setDeleteTarget(doc)}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -1690,7 +1692,7 @@ setBusy(false);
                       <button className="tiny-button" onClick={() => openItem(record.id)}>Ver ficha</button>
                       <button className="document-action" type="button" onClick={() => void openPreview(doc)} title="Vista previa" aria-label={`Vista previa de ${doc.file_name}`}><Eye size={16} /></button>
                       <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
-                      <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento" aria-label={`Eliminar ${doc.file_name}`}><Trash2 size={16} /></button>
+                      {(identity.role === 'admin' || doc.uploaded_by === identity.id) && <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento" aria-label={`Eliminar ${doc.file_name}`}><Trash2 size={16} /></button>}
                     </div>
                   </div>
                 ))}
