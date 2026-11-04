@@ -23,8 +23,11 @@ import {
   Search,
   Trash2,
   Upload,
+  LogOut,
+  UserRound,
   X,
 } from 'lucide-react';
+import {AuthGate, type ApprovedIdentity} from './auth-gate';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
 
@@ -156,6 +159,10 @@ function formatBytes(bytes: number) {
 }
 
 export default function Home() {
+  return <AuthGate>{(identity)=><ProtectedHome key={identity.id} identity={identity}/>}</AuthGate>;
+}
+
+function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const sb = client();
   const [section, setSection] = useState<'inicio' | 'estandares' | 'biblioteca' | 'pendientes'>('inicio');
   const [standard, setStandard] = useState<number>(1);
@@ -183,7 +190,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadStatus, setUploadStatus] = useState<Exclude<Status, 'pendiente'> | ''>('');
-  const [uploader, setUploader] = useState('');
+  const [uploader, setUploader] = useState(identity.full_name);
   const [notes, setNotes] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Evidence | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -215,7 +222,7 @@ export default function Home() {
   }, []);
 
   const refresh = async () => {
-    if (!sb) return;
+    if (!sb || !identity.approved) return;
     const [docsRes, trackingRes] = await Promise.all([
       sb.from('evidencias').select('*').order('created_at', { ascending: false }),
       sb.from('seguimiento').select('*'),
@@ -227,7 +234,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!sb) return;
+    if (!sb || !identity.approved) return;
     let active = true;
     const reload = () => {
       if (active) void refresh();
@@ -413,7 +420,7 @@ export default function Home() {
     setQuickUploadStep('select');
     setFiles([]);
     setUploadStatus('');
-    setUploader('');
+    setUploader(identity.full_name);
     setNotes('');
     setQuickUpload(true);
     dismissAlert();
@@ -430,7 +437,7 @@ export default function Home() {
     setQuickUploadStep('attach');
     setFiles([]);
     setUploadStatus('');
-    setUploader('');
+    setUploader(identity.full_name);
     setNotes('');
     setQuickUpload(true);
     dismissAlert();
@@ -474,7 +481,7 @@ export default function Home() {
     setUploadFromMedia(forUpload);
     setFiles([]);
     setUploadStatus('');
-    setUploader('');
+    setUploader(identity.full_name);
     setNotes('');
     dismissAlert();
   }
@@ -483,7 +490,12 @@ export default function Home() {
 
   async function upload() {
   const target = quickUpload ? all.find((row) => row.id === quickMedium) || null : selected;
-  if (!sb || !target || busy) return;
+  if (!sb || !target || busy || !identity.approved) return;
+  const {data:{user:verified},error:verificationError}=await sb.auth.getUser();
+  if(verificationError || verified?.id !== identity.id) {
+    showAlert('La sesión caducó. Vuelve a ingresar.');
+    return;
+  }
 
   if (!uploadStatus) {
     showAlert('Debes seleccionar el estado del medio.');
@@ -528,7 +540,8 @@ export default function Home() {
         file_path: path,
         mime_type: file.type || 'application/pdf',
         size_bytes: file.size,
-        uploader: uploader.trim() || 'Colaborador',
+        uploader: identity.full_name,
+        uploaded_by: identity.id,
         notes: notes.trim(),
       });
       if (dbErr) {
@@ -561,7 +574,7 @@ if (statusError) {
 
 const savedNames = files.map((file) => file.name);
 setFiles([]);
-setUploader('');
+setUploader(identity.full_name);
 setNotes('');
 setUploadStatus('');
 
@@ -628,9 +641,12 @@ setBusy(false);
     setDeleting(true);
     dismissAlert();
     try {
+      if(!sb) throw new Error('Debes iniciar sesión para eliminar.');
+      const {data:{session}}=await sb.auth.getSession();
+      if(!session?.access_token) throw new Error('Sesión expirada. Vuelve a ingresar.');
       const response = await fetch('/api/documents/delete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
         body: JSON.stringify({ id: deleteTarget.id }),
       });
       const result = await response.json();
@@ -714,6 +730,12 @@ setBusy(false);
             {query && (
               <button type="button" className="simple-search-clear" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15}/></button>
             )}
+          </div>
+          <div className="unfv-account-menu">
+            <span className="unfv-account-name"><UserRound size={15}/>{identity.full_name}</span>
+            <button type="button" className="unfv-sign-out" onClick={()=>void sb?.auth.signOut()} title="Cerrar sesión">
+              <LogOut size={16}/><span>Salir</span>
+            </button>
           </div>
           <button type="button" className="header-upload-button" onClick={startQuickUpload}>
             <Upload size={17} aria-hidden="true" />
@@ -886,9 +908,8 @@ setBusy(false);
                         </select>
                       </label>
                       <div className="quick-attach-two-cols">
-                        <label htmlFor="quick-upload-uploader">Colaborador (opcional)
-                          <input id="quick-upload-uploader" value={uploader} disabled={busy}
-                            onChange={(event) => setUploader(event.target.value)} placeholder="Nombre o área"/>
+                        <label htmlFor="quick-upload-uploader">Registrado por
+                          <input id="quick-upload-uploader" value={identity.full_name} disabled readOnly title="Nombre de tu cuenta"/>
                         </label>
                         <label htmlFor="quick-upload-notes">Observación (opcional)
                           <input id="quick-upload-notes" value={notes} disabled={busy}
@@ -946,7 +967,7 @@ setBusy(false);
                       <button type="button" className="quick-upload-cancel" onClick={() => {
                         setQuickUploadStep('select');
                         setFiles([]); setQuickMedium(''); setQuickMediaSearch('');
-                        setUploadStatus(''); setNotes(''); setUploader(''); setQuickSavedNames([]);
+                        setUploadStatus(''); setNotes(''); setUploader(identity.full_name); setQuickSavedNames([]);
                       }}>Cargar otro documento</button>
                       <button type="button" className="quick-upload-continue" onClick={closeQuickUpload}>
                         Finalizar <CheckCircle2 size={16}/>
@@ -1401,15 +1422,8 @@ setBusy(false);
 
         <div className="evidence-form-grid">
           <div className="evidence-field">
-            <label htmlFor="evidence-uploader">
-              Colaborador <small>(opcional)</small>
-            </label>
-            <input
-              id="evidence-uploader"
-              value={uploader}
-              onChange={(e) => setUploader(e.target.value)}
-              placeholder="Nombre o área"
-            />
+            <label htmlFor="evidence-uploader">Registrado por</label>
+            <input id="evidence-uploader" value={identity.full_name} disabled readOnly title="Nombre de tu cuenta"/>
           </div>
 
           <div className="evidence-field">
