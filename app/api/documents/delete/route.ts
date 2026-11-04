@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (origin && new URL(origin).origin !== new URL(request.url).origin)
     return failure('Origen no autorizado.', 403);
 
-  const token = request.headers.get('authorization')?.match(/^Bearer\\s+(.+)$/i)?.[1];
+  const token = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return failure('Inicia sesión para eliminar documentos.', 401);
 
   // Todas las operaciones de datos usan el token del usuario, nunca service_role.
