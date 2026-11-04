@@ -51,8 +51,6 @@ export function AuthGate({children}:{children:(identity:ApprovedIdentity)=>React
         setProfile(readError?null:data as AccountProfile|null);
         setProfileError(readError?.message||'');
         setProfileLoading(false);
-      }).catch(()=>{
-        if(active){setProfile(null);setProfileError('No se pudo cargar el perfil.');setProfileLoading(false);}
       });
     return ()=>{active=false;};
   },[user?.id,reload]);
