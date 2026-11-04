@@ -30,11 +30,13 @@ export function AuthGate({children}:{children:(identity:ApprovedIdentity)=>React
     const {data:{subscription}}=sb.auth.onAuthStateChange((_event,session)=>{
       if(!active)return;
       setUser(session?.user??null);
+      setProfileLoading(Boolean(session?.user));
       setBooting(false);
     });
     void sb.auth.getUser().then(({data,error:authError})=>{
       if(!active)return;
       setUser(authError?null:data.user);
+      setProfileLoading(Boolean(!authError&&data.user));
       setBooting(false);
     }).catch(()=>{if(active){setUser(null);setBooting(false);}});
     return ()=>{active=false;subscription.unsubscribe();};
