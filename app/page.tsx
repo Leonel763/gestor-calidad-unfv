@@ -33,6 +33,7 @@ import {
 import {AuthGate, type ApprovedIdentity} from './auth-gate';
 import {DocumentFeedback, type DocumentCommentBrief} from './document-feedback';
 import {StandardRequirementsDrawer} from './standard-requirements-drawer';
+import {StandardReviewBadge, StandardReviewControl, type StandardReview} from './standard-review-control';
 import {OfficePreview} from './office-preview';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
@@ -194,6 +195,8 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [uploadFromMedia, setUploadFromMedia] = useState(false);
   const [explorerStatus, setExplorerStatus] = useState<'todos' | VisualSummaryKey>('todos');
   const [tracking, setTracking] = useState<Tracking[]>([]);
+  const [standardReviews, setStandardReviews] = useState<StandardReview[]>([]);
+  const [savingReviewId, setSavingReviewId] = useState<number|null>(null);
   const [documents, setDocuments] = useState<Evidence[]>([]);
   const [alert, setAlert] = useState<Notice | null>(null);
   const alertTimer = useRef<number | null>(null);
@@ -320,10 +323,11 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
 
   const refresh = async () => {
     if (!sb || !identity.approved) return;
-    const [docsRes, trackingRes, commentRes] = await Promise.all([
+    const [docsRes, trackingRes, commentRes, reviewsRes] = await Promise.all([
       sb.from('evidencias').select('*').order('created_at', { ascending: false }),
       sb.from('seguimiento').select('*'),
       sb.from('document_comments').select('evidence_id,comment_type,status'),
+      sb.from('standard_reviews').select('standard_id,status,reviewed_by,reviewer_name,reviewed_at'),
     ]);
     if (docsRes.error) showAlert(`No se pudo consultar la biblioteca: ${docsRes.error.message}`);
     else setDocuments((docsRes.data || []) as Evidence[]);
@@ -331,6 +335,8 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     else setTracking((trackingRes.data || []) as Tracking[]);
     if (commentRes.error) showAlert(`No se pudieron consultar las observaciones: ${commentRes.error.message}`);
     else setCommentBriefs((commentRes.data || []) as DocumentCommentBrief[]);
+    if (reviewsRes.error) showAlert('No se pudieron consultar las revisiones: ' + reviewsRes.error.message);
+    else setStandardReviews((reviewsRes.data || []) as StandardReview[]);
   };
 
   useEffect(() => {
@@ -345,6 +351,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'evidencias' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'seguimiento' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'document_comments' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'standard_reviews' }, reload)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') reload();
       });
@@ -376,6 +383,14 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
 };
   const getDocs = (id: string) => documents.filter((d) => d.point_id === id);
   const groupSummary = (items: Item[]) => summarizeStatuses(items.map((it) => getStatus(it.id)));
+  const reviewFor=(id:number)=>standardReviews.find((review)=>review.standard_id===id);
+  const reviewOutdated=(id:number)=>{
+    const review=reviewFor(id);
+    if (!review || review.status!=='revisado') return false;
+    const reviewedAt=new Date(review.reviewed_at).getTime();
+    return documents.some((doc)=>new Date(doc.created_at).getTime()>reviewedAt &&
+      all.some((row)=>row.id===doc.point_id && row.standard===id));
+  };
 
   const complete = all.filter((a) => getStatus(a.id) === 'completo').length;
   const simulated = all.filter((a) => getStatus(a.id) === 'en_proceso').length;
@@ -509,6 +524,39 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     setSection('estandares');
     setPoint(standards.find((st) => st.id === id)?.points[0]?.id || null);
     setItem(null);
+  }
+
+  async function updateStandardReview(id:number,status:'en_revision'|'revisado'|null) {
+    if (!sb || !identity.approved || identity.role!=='admin' || savingReviewId!==null) return;
+    if (status==='revisado') {
+      const title=standards.find((value)=>value.id===id)?.title||'';
+      if (!window.confirm('¿Confirmas que revisaste el estándar '+id+' — '+title+' y que las evidencias son conformes?')) return;
+    }
+    setSavingReviewId(id);
+    try {
+      if (status===null) {
+        const {data,error}=await sb.from('standard_reviews').delete().eq('standard_id',id).select('standard_id');
+        if (error) throw error;
+        if (!data?.length) throw new Error('No se pudo retirar la revisión.');
+        setStandardReviews((prev)=>prev.filter((value)=>value.standard_id!==id));
+        showAlert('Marca de revisión retirada.', 'success');
+      } else {
+        // El trigger SQL valida al administrador y fija revisor y fecha reales.
+        const {data,error}=await sb.from('standard_reviews')
+          .upsert({standard_id:id,status,reviewed_by:identity.id,reviewer_name:identity.full_name},
+            {onConflict:'standard_id'})
+          .select('standard_id,status,reviewed_by,reviewer_name,reviewed_at')
+          .single();
+        if (error || !data) throw error||new Error('No se pudo guardar la revisión.');
+        const saved=data as StandardReview;
+        setStandardReviews((prev)=>[...prev.filter((value)=>value.standard_id!==id),saved]);
+        showAlert(status==='revisado'?'Estándar marcado como revisado.':'Revisión iniciada.', 'success');
+      }
+    }catch(reason){
+      showAlert(reason instanceof Error ? reason.message : 'No se pudo actualizar la revisión.');
+    }finally{
+      setSavingReviewId(null);
+    }
   }
 
   function startQuickUpload() {
@@ -1355,6 +1403,7 @@ setBusy(false);
                             <strong>{st.title}</strong>
                             <span className="tri-standard-progressline"><span style={{width: summary.percent + '%'}}/></span>
                             <small>{summary.completed}/{summary.total} medios</small>
+                            <StandardReviewBadge review={reviewFor(st.id)} stale={reviewOutdated(st.id)}/>
                           </span>
                           <span className="tri-standard-right">
                             <span className={'tri-standard-state state-' + summary.kind}>{summary.percent}%</span>
@@ -1390,6 +1439,14 @@ setBusy(false);
                     </div>
                     <button type="button" className="tri-add-button" onClick={startQuickUpload}><Upload size={16}/> Cargar documento</button>
                   </div>
+                  <StandardReviewControl
+                    standardId={selectedStandard.id}
+                    review={reviewFor(selectedStandard.id)}
+                    stale={reviewOutdated(selectedStandard.id)}
+                    canReview={identity.role==='admin'}
+                    saving={savingReviewId===selectedStandard.id}
+                    onChange={(next)=>void updateStandardReview(selectedStandard.id,next)}
+                  />
                   <div className="tri-points-head">
                     <div><h3>Puntos de evaluación</h3><p>Selecciona un punto para ver sus medios de logro.</p></div>
                     <details className="tri-standard-info">
