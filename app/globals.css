@@ -1760,3 +1760,44 @@
  .standard-review-action.reset{grid-column:auto}
  .standard-review-copy{min-width:0}
 }
+
+
+/* Ruta fija en ficha de medio: acompaña el scroll sin ocultar datos. */
+.evidence-sticky-navigation{
+  position:sticky;
+  top:var(--unfv-topbar-height,78px);
+  z-index:14;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-height:50px;
+  padding:8px 13px;
+  margin:0 0 1px;
+  border:1px solid #d6e7dc;
+  border-radius:10px;
+  background:rgba(250,253,251,.96);
+  box-shadow:0 5px 20px #133d2815;
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+}
+.evidence-sticky-back{
+  display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;
+  border:0;border-radius:8px;background:#e7f5ec;color:#176f4c;
+  font-size:12px;font-weight:800;min-height:36px;padding:8px 12px;
+}
+.evidence-sticky-back:hover{background:#d4ecdf}
+.evidence-sticky-back:focus-visible{outline:3px solid #84c6a0;outline-offset:2px}
+.evidence-sticky-divider{width:1px;height:19px;background:#d5e6dc;flex-shrink:0}
+.evidence-sticky-current{display:inline-flex;align-items:center;gap:7px;min-width:0;color:#547865;font-size:12px;white-space:nowrap}
+.evidence-sticky-current strong{color:#1e5940}
+@media(max-width:900px){
+  .evidence-sticky-navigation{z-index:35;min-height:48px;padding:7px 9px;gap:8px}
+  .evidence-sticky-back{font-size:11px;min-height:39px;padding:8px 10px}
+  .evidence-sticky-current{font-size:11px;gap:4px}
+}
+@media(max-width:420px){
+  .evidence-sticky-navigation{gap:7px}
+  .evidence-sticky-back{font-size:10px;padding:8px 7px}
+  .evidence-sticky-current{font-size:10px}
+  .evidence-sticky-current svg{display:none}
+}
