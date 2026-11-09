@@ -16,7 +16,9 @@
     "@supabase/supabase-js": "^2.57.0",
     "lucide-react": "^0.468.0",
     "tailwindcss": "^4.1.0",
-    "@tailwindcss/postcss": "^4.1.0"
+    "@tailwindcss/postcss": "^4.1.0",
+    "docx-preview": "0.4.1",
+    "exceljs": "4.4.0"
   },
   "devDependencies": {
     "typescript": "^5.9.0",
