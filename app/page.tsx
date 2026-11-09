@@ -219,10 +219,34 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const previewRequest = useRef(0);
+  const topbarRef = useRef<HTMLElement | null>(null);
 
   // Mantener la vista de cada usuario durante la sesión de esta pestaña.
   // Se guarda solo navegación y filtros, nunca archivos, contraseñas o formularios.
   const navigationKey = 'unfv-quality-workspace:v1:' + identity.id;
+
+  // Ajustar el encabezado fijo al alto real del menú, que cambia en móvil.
+  useEffect(() => {
+    if (!item || !topbarRef.current) return;
+    const element = topbarRef.current;
+    const updateHeight = () => {
+      document.documentElement.style.setProperty(
+        '--unfv-topbar-height',
+        Math.ceil(element.getBoundingClientRect().height) + 'px',
+      );
+    };
+    updateHeight();
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateHeight)
+      : null;
+    observer?.observe(element);
+    window.addEventListener('resize', updateHeight);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateHeight);
+      document.documentElement.style.removeProperty('--unfv-topbar-height');
+    };
+  }, [item]);
 
   useEffect(() => {
     try {
@@ -847,7 +871,7 @@ setBusy(false);
   return (
     <div className="shell shell-modern shell-horizontal">
       <div className="main main-horizontal">
-        <header className="topbar topbar-modern simple-topbar">
+        <header ref={topbarRef} className="topbar topbar-modern simple-topbar">
           <button type="button" className="simple-brand" onClick={() => nav('inicio')} aria-label="Ir a Inicio">
             <span className="simple-brand-symbol"><Landmark size={23} /></span>
             <span className="simple-brand-copy">
@@ -1524,17 +1548,23 @@ setBusy(false);
 {selected && (
   <section className="evidence-page">
 
-    {/* Cabecera compacta: lo esencial primero y el detalle bajo demanda. */}
-    <div className="evidence-heading evidence-heading-refined">
+    {/* Navegación persistente: siempre visible debajo de la barra principal. */}
+    <nav className="evidence-sticky-navigation" aria-label="Regresar al estándar">
       <button
         type="button"
-        className="back"
-        onClick={() => {setItem(null);setShowRequirements(false);}}
+        className="evidence-sticky-back"
+        onClick={() => { setItem(null); setShowRequirements(false); }}
+        aria-label={`Volver al estándar ${selected.standard}`}
       >
-        <ArrowLeft size={16} />
-        Estándar {selected.standard} / Medio {selected.id}
+        <ArrowLeft size={17} aria-hidden="true"/>
+        Volver al estándar {selected.standard}
       </button>
+      <span className="evidence-sticky-divider" aria-hidden="true"/>
+      <span className="evidence-sticky-current"><FileText size={15} aria-hidden="true"/> Medio <strong>{selected.id}</strong></span>
+    </nav>
 
+    {/* Cabecera compacta: lo esencial primero y el detalle bajo demanda. */}
+    <div className="evidence-heading evidence-heading-refined">
       <div className="evidence-hero">
         <div className="evidence-hero-icon"><FileText size={27} aria-hidden="true" /></div>
         <div className="evidence-hero-description">
