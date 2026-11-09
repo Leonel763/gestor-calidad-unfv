@@ -16,15 +16,16 @@ export function reviewDate(value:string){
 }
 
 export function StandardReviewBadge({
-  review,stale=false,reviewedCount=0
+  review,stale=false,reviewedCount=0,personal=true
 }:{
   review?:StandardReview;
   stale?:boolean;
   reviewedCount?:number;
+  personal?:boolean;
 }){
   const kind = !review ? 'sin-revisar' : stale && review.status==='revisado' ? 'actualizar' : review.status;
-  const label = kind==='revisado' ? 'Tu revisión ✓' : kind==='en_revision'
-    ? 'Estás revisando' : kind==='actualizar' ? 'Revisar cambios' : 'Sin revisar';
+  const label = kind==='revisado' ? (personal?'Tu revisión ✓':'Revisado ✓') : kind==='en_revision'
+    ? (personal?'Estás revisando':'En revisión') : kind==='actualizar' ? 'Revisar cambios' : 'Sin revisar';
   return (
     <span className="standard-review-badge-group">
       <span className={'standard-review-badge is-'+kind}>
@@ -107,7 +108,7 @@ export function StandardReviewControl({
               return (
                 <li key={review.reviewed_by}>
                   <span className="standard-review-member-name">{review.reviewer_name}{review.reviewed_by===myUserId?' (tú)':''}</span>
-                  <StandardReviewBadge review={review} stale={outdated}/>
+                  <StandardReviewBadge review={review} stale={outdated} personal={false}/>
                   <time dateTime={review.reviewed_at}>{reviewDate(review.reviewed_at)}</time>
                 </li>
               );
