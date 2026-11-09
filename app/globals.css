@@ -1801,3 +1801,26 @@
   .evidence-sticky-current{font-size:10px}
   .evidence-sticky-current svg{display:none}
 }
+
+
+/* Revisión individual por cuenta y resumen del equipo */
+.standard-review-badge-group{display:inline-flex;flex-wrap:wrap;align-items:center;gap:5px;max-width:100%;min-width:0}
+.standard-review-total{display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:99px;background:#eaf2ee;color:#426d58;border:1px solid #dbe9df;font-size:9px;font-weight:800;line-height:1.4;white-space:nowrap}
+.tri-standard-copy>.standard-review-badge-group{align-items:flex-start}
+.tri-standard-copy>.standard-review-badge-group .standard-review-total{font-size:9px;padding:4px 7px}
+.standard-review-team{margin-top:3px;padding:12px;border-radius:11px;border:1px solid #e0eee6;background:#fff;display:grid;gap:10px;min-width:0}
+.standard-review-team-header{display:flex;align-items:center;justify-content:space-between;gap:7px 12px;flex-wrap:wrap}
+.standard-review-team-header strong{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#24563d}
+.standard-review-team-header small{font-size:10px;color:#7b9384}
+.standard-review-team-list{display:grid;gap:0;list-style:none;margin:0;padding:0}
+.standard-review-team-list li{display:flex;align-items:center;justify-content:space-between;gap:7px 12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid #edf3ee}
+.standard-review-team-list .standard-review-member-name{min-width:115px;flex:1;color:#274e39;font-weight:750;font-size:11px}
+.standard-review-team-list time{font-size:10px;color:#86998d;white-space:nowrap}
+.standard-review-team-list .standard-review-badge{font-size:9px}
+.standard-review-empty{margin:0;font-size:11px;line-height:1.65;color:#7b9183}
+@media(max-width:650px){
+  .standard-review-team{padding:10px}
+  .standard-review-team-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+  .standard-review-team-list .standard-review-member-name{min-width:0}
+  .standard-review-team-list time{grid-column:1/-1}
+}
