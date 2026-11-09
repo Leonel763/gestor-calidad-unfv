@@ -64,7 +64,7 @@ export function OfficePreview({url,kind}:{url:string;kind:OfficeKind}) {
           const excel = await import('exceljs');
           if(!active)return;
           const workbook = new excel.Workbook();
-          await workbook.xlsx.load(data as unknown as Buffer);
+          await workbook.xlsx.load(new Uint8Array(data) as unknown as Parameters<typeof workbook.xlsx.load>[0]);
           if(!active)return;
           const parsed:SheetView[] = workbook.worksheets.map(sheet=>{
             const totalRows=sheet.rowCount;
