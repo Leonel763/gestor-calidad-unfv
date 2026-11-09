@@ -33,6 +33,7 @@ import {
 import {AuthGate, type ApprovedIdentity} from './auth-gate';
 import {DocumentFeedback, type DocumentCommentBrief} from './document-feedback';
 import {StandardRequirementsDrawer} from './standard-requirements-drawer';
+import {OfficePreview} from './office-preview';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
 
@@ -1862,6 +1863,10 @@ setBusy(false);
               ) : previewUrl && (previewDoc.mime_type.startsWith('image/') || /\.(png|jpe?g)$/i.test(previewDoc.file_name)) ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={previewUrl} alt={`Vista previa de ${previewDoc.file_name}`} />
+              ) : previewUrl && /\.docx$/i.test(previewDoc.file_name) ? (
+                <OfficePreview url={previewUrl} kind="word"/>
+              ) : previewUrl && /\.xlsx$/i.test(previewDoc.file_name) ? (
+                <OfficePreview url={previewUrl} kind="excel"/>
               ) : (
                 <p className="preview-message">Este formato no admite vista previa en el navegador. Descarga el archivo para abrirlo.</p>
               )}
