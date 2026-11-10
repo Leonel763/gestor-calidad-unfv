@@ -34,6 +34,7 @@ import {AuthGate, type ApprovedIdentity} from './auth-gate';
 import {DocumentFeedback, type DocumentCommentBrief} from './document-feedback';
 import {StandardRequirementsDrawer} from './standard-requirements-drawer';
 import {StandardReviewBadge, StandardReviewControl, type StandardReview} from './standard-review-control';
+import {StandardReviewConfirmDialog} from './standard-review-confirm-dialog';
 import {OfficePreview} from './office-preview';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
@@ -197,6 +198,8 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [tracking, setTracking] = useState<Tracking[]>([]);
   const [standardReviews, setStandardReviews] = useState<StandardReview[]>([]);
   const [savingReviewId, setSavingReviewId] = useState<number|null>(null);
+  const [pendingReviewId, setPendingReviewId] = useState<number|null>(null);
+  const [reviewConfirmError, setReviewConfirmError] = useState('');
   const [documents, setDocuments] = useState<Evidence[]>([]);
   const [alert, setAlert] = useState<Notice | null>(null);
   const alertTimer = useRef<number | null>(null);
@@ -551,11 +554,12 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     setItem(null);
   }
 
-  async function updateStandardReview(id:number,status:'en_revision'|'revisado'|null) {
+  async function updateStandardReview(id:number,status:'en_revision'|'revisado'|null,confirmed=false) {
     if (!sb || !identity.approved || savingReviewId!==null) return;
-    if (status==='revisado') {
-      const title=standards.find((value)=>value.id===id)?.title||'';
-      if (!window.confirm('¿Confirmas que revisaste el estándar '+id+' — '+title+' y que consideras conformes las evidencias? Esta marca quedará a tu nombre.')) return;
+    if (status==='revisado' && !confirmed) {
+      setReviewConfirmError('');
+      setPendingReviewId(id);
+      return;
     }
     setSavingReviewId(id);
     try {
@@ -577,10 +581,16 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
         if (error || !data) throw error||new Error('No se pudo guardar tu revisión.');
         const saved=data as StandardReview;
         setStandardReviews((prev)=>[...prev.filter((value)=>!(value.standard_id===id && value.reviewed_by===identity.id)),saved]);
+        if (status==='revisado') {
+          setPendingReviewId(null);
+          setReviewConfirmError('');
+        }
         showAlert(status==='revisado'?'Tu revisión se registró correctamente.':'Se registró que estás revisando el estándar.', 'success');
       }
     }catch(reason){
-      showAlert(reason instanceof Error ? reason.message : 'No se pudo actualizar tu revisión.');
+      const message=reason instanceof Error ? reason.message : 'No se pudo actualizar tu revisión.';
+      if (status==='revisado') setReviewConfirmError(message);
+      else showAlert(message);
     }finally{
       setSavingReviewId(null);
     }
@@ -1926,6 +1936,21 @@ setBusy(false);
             setShowRequirements(false);
             window.requestAnimationFrame(()=>document.getElementById('carga-evidencia')?.scrollIntoView({behavior:'smooth',block:'start'}));
           }}
+        />
+      )}
+      {pendingReviewId!==null && (
+        <StandardReviewConfirmDialog
+          standardId={pendingReviewId}
+          standardTitle={standards.find((st)=>st.id===pendingReviewId)?.title || ''}
+          reviewerName={identity.full_name}
+          saving={savingReviewId===pendingReviewId}
+          error={reviewConfirmError}
+          onClose={()=>{
+            if(savingReviewId!==null) return;
+            setPendingReviewId(null);
+            setReviewConfirmError('');
+          }}
+          onConfirm={()=>void updateStandardReview(pendingReviewId,'revisado',true)}
         />
       )}
       {feedbackDoc && (

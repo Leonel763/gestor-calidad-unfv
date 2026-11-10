@@ -1824,3 +1824,105 @@
   .standard-review-team-list .standard-review-member-name{min-width:0}
   .standard-review-team-list time{grid-column:1/-1}
 }
+
+
+/* Confirmación amistosa de revisión manual - estándar UNFV */
+.review-confirm-overlay{
+ position:fixed;inset:0;z-index:260;display:flex;align-items:center;justify-content:center;
+ padding:clamp(12px,3vw,28px);background:rgba(10,36,25,.56);
+ backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+}
+.review-confirm-dialog{
+ position:relative;display:flex;flex-direction:column;align-items:stretch;gap:0;
+ width:min(100%,495px);max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;
+ padding:29px 30px 25px;border-radius:20px;background:#fff;
+ border:1px solid #d9e9de;box-shadow:0 25px 80px #0a342440;
+ animation:review-dialog-appear .22s ease-out;
+}
+@keyframes review-dialog-appear{
+ from{opacity:0;transform:translateY(12px) scale(.98)}
+ to{opacity:1;transform:translateY(0) scale(1)}
+}
+.review-confirm-close{
+ position:absolute;top:17px;right:17px;display:grid;place-items:center;
+ width:35px;height:35px;border:0;border-radius:9px;
+ background:#f0f5f2;color:#668572;cursor:pointer;
+}
+.review-confirm-close:hover:not(:disabled){background:#e4efe8;color:#246b4b}
+.review-confirm-illustration{
+ width:74px;height:74px;margin:0 auto 15px;position:relative;
+ display:grid;place-items:center;border-radius:22px;
+ background:linear-gradient(145deg,#e5f8ec,#d3ebdd);color:#177b52;
+}
+.review-confirm-illustration-ring{
+ display:grid;place-items:center;width:52px;height:52px;border-radius:16px;
+ border:1px solid #b4dfc2;background:#f5fff7;
+}
+.review-confirm-illustration-check{
+ position:absolute;right:-5px;bottom:-5px;display:grid;place-items:center;
+ border:3px solid #fff;border-radius:50%;background:#138151;color:#fff;
+ width:29px;height:29px;
+}
+.review-confirm-eyebrow{
+ text-align:center;font-size:10px;letter-spacing:.085em;color:#21835e;font-weight:800;
+ margin-bottom:7px;
+}
+.review-confirm-dialog h2{
+ margin:0;text-align:center;color:#173e2b;font:800 23px/1.3 var(--display);
+}
+.review-confirm-description{
+ margin:10px auto 20px;max-width:370px;text-align:center;
+ color:#718b79;font-size:12px;line-height:1.8;
+}
+.review-confirm-detail{
+ display:grid;gap:7px;background:#f7fbf8;border:1px solid #e0ebe2;
+ border-radius:12px;padding:14px 16px;min-width:0;
+}
+.review-confirm-detail-label{font-size:10px;font-weight:800;letter-spacing:.045em;color:#31845f}
+.review-confirm-detail>strong{font:800 13px/1.5 var(--display);color:#244c36;overflow-wrap:anywhere}
+.review-confirm-person{
+ display:flex;align-items:center;gap:8px;margin-top:7px;padding-top:11px;
+ border-top:1px solid #e7ede8;font-size:11px;color:#728b79;
+}
+.review-confirm-person svg{flex-shrink:0;color:#26835b}
+.review-confirm-person strong{color:#275e42}
+.review-confirm-note{
+ display:flex;align-items:flex-start;gap:10px;margin-top:12px;
+ padding:11px 12px;border-radius:10px;background:#eef7f1;
+ color:#567562;font-size:10px;line-height:1.7;
+}
+.review-confirm-note svg{flex-shrink:0;color:#348a5c}
+.review-confirm-error{
+ display:flex;align-items:flex-start;gap:8px;border:1px solid #f4c6be;
+ border-radius:10px;background:#fff2f0;color:#a5463c;
+ padding:10px 12px;margin-top:12px;font-size:11px;line-height:1.5;
+}
+.review-confirm-error svg{flex-shrink:0}
+.review-confirm-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.45fr);gap:10px;margin-top:22px}
+.review-confirm-actions button{
+ display:flex;align-items:center;justify-content:center;gap:8px;
+ min-height:45px;border-radius:10px;font-size:12px;font-weight:800;
+ border:1px solid transparent;padding:11px 12px;cursor:pointer;
+ transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;
+}
+.review-confirm-cancel{background:#fff;color:#617d6d;border-color:#d9e7de!important}
+.review-confirm-cancel:hover:not(:disabled){background:#f1f6f3}
+.review-confirm-accept{background:#187f55;color:#fff;box-shadow:0 3px 12px #166b4626}
+.review-confirm-accept:hover:not(:disabled){background:#106a46}
+.review-confirm-actions button:focus-visible,.review-confirm-close:focus-visible{
+ outline:3px solid #9bd4b6;outline-offset:2px;
+}
+.review-confirm-actions button:disabled,.review-confirm-close:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:520px){
+ .review-confirm-overlay{padding:10px}
+ .review-confirm-dialog{padding:25px 18px 18px;border-radius:17px}
+ .review-confirm-dialog h2{font-size:20px}
+ .review-confirm-description{font-size:12px}
+ .review-confirm-actions{grid-template-columns:1fr;gap:8px}
+ .review-confirm-accept{grid-row:1}
+ .review-confirm-cancel{grid-row:2}
+ .review-confirm-actions button{min-height:46px}
+}
+@media(prefers-reduced-motion:reduce){
+ .review-confirm-dialog{animation:none}
+}
