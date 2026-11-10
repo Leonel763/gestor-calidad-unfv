@@ -15,7 +15,7 @@ export type ExportableStandard = {
   points: {id: string; items: {id: string}[]}[];
 };
 
-type DialogTab = 'visibility' | 'media' | 'download';
+type DialogTab = 'manage' | 'download';
 type ZipLayout = 'full' | 'standards' | 'flat';
 
 type Props = {
@@ -67,6 +67,7 @@ export function StandardBulkWorkspace({
   const [layout, setLayout] = useState<ZipLayout>('full');
   const [mediumSearch,setMediumSearch] = useState('');
   const [mediumStandard,setMediumStandard] = useState('todos');
+  const [expandedStandards,setExpandedStandards] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
@@ -85,12 +86,26 @@ export function StandardBulkWorkspace({
     return lookup;
   }, [standards]);
 
-  const selectableMedia = useMemo(() => {
+  // Un único explorador para estándares y medios. La búsqueda encuentra ambos tipos.
+  const organizedStandards = useMemo(() => {
     const needle=mediumSearch.trim().toLocaleLowerCase('es');
-    return standards.flatMap(st=>st.points.flatMap(pt=>pt.items.map(medium=>({
-      standard:st.id,point:pt.id,id:medium.id,
-    })))).filter(entry=>(mediumStandard==='todos'||entry.standard===Number(mediumStandard)) &&
-      (!needle || ('E'+entry.standard+' '+entry.id+' '+entry.point).toLocaleLowerCase('es').includes(needle)));
+    return standards
+      .filter(st => mediumStandard==='todos' || String(st.id)===mediumStandard)
+      .map(st => {
+        const matchesStandard = !needle || [
+          'e'+st.id, 'e'+String(st.id).padStart(2,'0'),
+          'estandar '+st.id, 'estándar '+st.id, st.title,
+        ].some(text=>text.toLocaleLowerCase('es').includes(needle));
+        const media=st.points.flatMap(point=>point.items.map(item=>({
+          id:item.id,point:point.id,
+        })));
+        const matchingMedia=needle && !matchesStandard
+          ? media.filter(medium=>('medio '+medium.id+' '+medium.id+' '+medium.point)
+              .toLocaleLowerCase('es').includes(needle))
+          : media;
+        return {st,matchingMedia,matchesStandard};
+      })
+      .filter(group=>group.matchesStandard || group.matchingMedia.length>0);
   },[standards,mediumSearch,mediumStandard]);
 
   const docCountByMedium = useMemo(()=>{
@@ -272,13 +287,9 @@ export function StandardBulkWorkspace({
         </header>
 
         <nav className="bulk-tabs" aria-label="Opciones de gestión">
-          <button type="button" className={tab === 'visibility' ? 'active' : ''}
-            disabled={busy} onClick={() => {setTab('visibility');setError('');}}>
-            <EyeOff size={17}/> Ocultar estándares
-          </button>
-          <button type="button" className={tab === 'media' ? 'active' : ''}
-            disabled={busy} onClick={() => {setTab('media');setError('');}}>
-            <SearchCheck size={17}/> Excluir medios
+          <button type="button" className={tab === 'manage' ? 'active' : ''}
+            disabled={busy} onClick={() => {setTab('manage');setError('');}}>
+            <Layers3 size={17}/> Organizar
           </button>
           <button type="button" className={tab === 'download' ? 'active' : ''}
             disabled={busy} onClick={() => {setTab('download');setError('');}}>
@@ -287,78 +298,96 @@ export function StandardBulkWorkspace({
         </nav>
 
         <div className="bulk-body">
-          {tab === 'visibility' ? (
+          {tab === 'manage' ? (
             <>
               <div className="bulk-info"><Info size={17}/>
-                <div><strong>No se eliminará ningún estándar ni documento.</strong>
-                  <p>En esta prueba, ocultar solamente lo retira del explorador en este navegador y cuenta. Puedes recuperarlo aquí cuando quieras.</p>
+                <div><strong>Organiza estándares y medios desde un mismo lugar.</strong>
+                  <p>Ocultar un estándar o excluir un medio lo retira del seguimiento de esta vista. Puedes restaurarlo cuando quieras; los documentos adjuntos no se eliminan.</p>
                 </div>
               </div>
+
               <div className="bulk-section-top">
-                <strong>Estándares disponibles</strong>
-                <span>{standards.length - hiddenIds.length} visibles · {hiddenIds.length} ocultos</span>
-              </div>
-              <div className="bulk-standard-list">
-                {standards.map(st => {
-                  const hidden = hiddenIds.includes(st.id);
-                  const fileCount = docCountByStandard.get(st.id) || 0;
-                  return (
-                    <div className={'bulk-standard-row' + (hidden ? ' is-hidden':'')} key={st.id}>
-                      <span className="bulk-standard-code">E{st.id}</span>
-                      <div className="bulk-standard-info">
-                        <strong>{st.title}</strong>
-                        <small>{fileCount} {fileCount === 1 ? 'documento' : 'documentos'} · {hidden ? 'Oculto en esta vista' : 'Visible'}</small>
-                      </div>
-                      <button type="button" className={'bulk-toggle' + (hidden ? ' restore' : '')}
-                        onClick={() => toggleVisible(st.id)} disabled={busy}
-                        title={hidden ? 'Mostrar estándar de nuevo' : 'Ocultar sin borrar datos'}>
-                        {hidden ? <ArchiveRestore size={15}/> : <EyeOff size={15}/>}
-                        {hidden ? 'Restaurar' : 'Ocultar'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          ) : tab === 'media' ? (
-            <>
-              <div className="bulk-info"><Info size={17}/>
-                <div><strong>Excluir del seguimiento, sin eliminar archivos.</strong>
-                  <p>Al excluir un medio, desaparece del explorador y deja de contar en los indicadores de avance de esta vista. Puedes restaurarlo cuando quieras. Las evidencias siguen guardadas y disponibles en Biblioteca y en las descargas ZIP.</p>
-                </div>
-              </div>
-              <div className="bulk-section-top">
-                <strong>Medios de logro individuales</strong>
-                <span>{excludedMedia.length} excluidos · {standards.flatMap(st=>st.points.flatMap(pt=>pt.items)).length - excludedMedia.length} activos</span>
+                <strong>Estándares y medios de logro</strong>
+                <span>{hiddenIds.length} estándares ocultos · {excludedMedia.length} medios excluidos</span>
               </div>
               <div className="bulk-media-filters">
-                <input value={mediumSearch} onChange={event=>setMediumSearch(event.target.value)} placeholder="Buscar código, por ejemplo 8.1.3" aria-label="Buscar medio de logro"/>
-                <select value={mediumStandard} onChange={event=>setMediumStandard(event.target.value)} aria-label="Filtrar por estándar">
+                <input value={mediumSearch} onChange={event=>setMediumSearch(event.target.value)}
+                  placeholder="Buscar E6, nombre o medio 6.1.1…" aria-label="Buscar estándar o medio de logro"/>
+                <select value={mediumStandard} onChange={event=>setMediumStandard(event.target.value)}
+                  aria-label="Filtrar por estándar">
                   <option value="todos">Todos los estándares</option>
                   {standards.map(st=><option key={st.id} value={st.id}>Estándar E{st.id}</option>)}
                 </select>
-                {excludedMedia.length>0 && <button type="button" disabled={busy} onClick={()=>onExcludedMediaChange([])}><ArchiveRestore size={15}/> Restaurar todos</button>}
+                {(mediumSearch || mediumStandard!=='todos') && (
+                  <button type="button" onClick={()=>{setMediumSearch('');setMediumStandard('todos');}}>
+                    <X size={15}/> Limpiar
+                  </button>
+                )}
               </div>
-              <div className="bulk-media-list">
-                {selectableMedia.map(entry=>{
-                  const hidden=excludedMedia.includes(entry.id);
-                  const files=docCountByMedium.get(entry.id)||0;
+
+              <div className="bulk-unified-list">
+                {organizedStandards.map(({st,matchingMedia})=>{
+                  const isHidden=hiddenIds.includes(st.id);
+                  const fileCount=docCountByStandard.get(st.id)||0;
+                  const excludedCount=st.points.flatMap(pt=>pt.items).filter(item=>excludedMedia.includes(item.id)).length;
+                  const expanded=Boolean(mediumSearch.trim()) || expandedStandards.includes(st.id);
                   return (
-                    <div key={entry.id} className={'bulk-standard-row'+(hidden?' is-hidden':'')}>
-                      <span className="bulk-standard-code">{entry.id}</span>
-                      <span className="bulk-standard-info">
-                        <strong>E{entry.standard} · Medio {entry.id}</strong>
-                        <small>{files} {files===1?'documento':'documentos'} conservados · {hidden?'Excluido del avance':'Incluido en el avance'}</small>
-                      </span>
-                      <button className={'bulk-toggle'+(hidden?' restore':'')} type="button" disabled={busy} onClick={()=>toggleMedium(entry.id)}>
-                        {hidden?<ArchiveRestore size={15}/>:<EyeOff size={15}/>}
-                        {hidden?'Restaurar':'Excluir'}
-                      </button>
-                    </div>
+                    <section className={'bulk-unified-standard'+(isHidden?' is-hidden':'')} key={st.id}>
+                      <div className="bulk-unified-standard-row">
+                        <button type="button" className="bulk-unified-expand"
+                          aria-expanded={expanded}
+                          aria-label={(expanded?'Contraer':'Mostrar')+' medios del estándar '+st.id}
+                          onClick={()=>setExpandedStandards(current=>current.includes(st.id)?
+                            current.filter(id=>id!==st.id):[...current,st.id])}>
+                          <ChevronRight size={17} className={expanded?'is-expanded':''}/>
+                          <span className="bulk-standard-code">E{String(st.id).padStart(2,'0')}</span>
+                          <span className="bulk-standard-info">
+                            <strong>{st.title}</strong>
+                            <small>{st.points.flatMap(pt=>pt.items).length} medios · {fileCount} archivos{excludedCount>0?' · '+excludedCount+' excluidos':''}</small>
+                          </span>
+                        </button>
+                        <button type="button" className={'bulk-toggle'+(isHidden?' restore':'')}
+                          onClick={()=>toggleVisible(st.id)} disabled={busy}
+                          title={isHidden?'Restaurar estándar':'Ocultar estándar sin borrar archivos'}>
+                          {isHidden?<ArchiveRestore size={15}/>:<EyeOff size={15}/>}
+                          {isHidden?'Restaurar':'Ocultar'}
+                        </button>
+                      </div>
+                      {expanded && (
+                        <div className="bulk-unified-media">
+                          <div className="bulk-unified-media-label">MEDIOS DEL ESTÁNDAR E{st.id}</div>
+                          {matchingMedia.map(medium=>{
+                            const excluded=excludedMedia.includes(medium.id);
+                            const files=docCountByMedium.get(medium.id)||0;
+                            return (
+                              <div key={medium.id} className={'bulk-unified-medium-row'+(excluded?' is-excluded':'')}>
+                                <span className="bulk-medium-code">{medium.id}</span>
+                                <span className="bulk-medium-desc">
+                                  <strong>Medio {medium.id}</strong>
+                                  <small>{files} {files===1?'archivo conservado':'archivos conservados'} · {excluded?'Fuera del seguimiento':'Incluido en el seguimiento'}</small>
+                                </span>
+                                <button type="button" className={'bulk-toggle'+(excluded?' restore':'')}
+                                  disabled={busy} onClick={()=>toggleMedium(medium.id)}>
+                                  {excluded?<ArchiveRestore size={15}/>:<EyeOff size={15}/>}
+                                  {excluded?'Restaurar':'Excluir'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
                   );
                 })}
-                {selectableMedia.length===0 && <p className="bulk-progress">No hay medios que coincidan con la búsqueda.</p>}
+                {organizedStandards.length===0 && (
+                  <div className="bulk-unified-empty">
+                    <SearchCheck size={23}/>
+                    <strong>No se encontraron resultados.</strong>
+                    <span>Prueba con otro código de medio o nombre de estándar.</span>
+                  </div>
+                )}
               </div>
+              <p className="bulk-manage-footnote">Las exclusiones son reversibles y solo afectan esta vista preliminar. Los documentos siguen disponibles en Biblioteca y en las descargas.</p>
             </>
           ) : (
             <>

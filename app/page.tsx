@@ -193,7 +193,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [excludedMedia, setExcludedMedia] = useState<string[]>([]);
   const [reviewedPointsByStandard, setReviewedPointsByStandard] = useState<Record<string,string[]>>({});
   const [pointReviewOpen,setPointReviewOpen] = useState(false);
-  const [bulkTab, setBulkTab] = useState<'visibility' | 'media' | 'download' | null>(null);
+  const [bulkTab, setBulkTab] = useState<'manage' | 'download' | null>(null);
   const [quickUpload, setQuickUpload] = useState(false);
   const [quickMedium, setQuickMedium] = useState('');
   const [quickMediaSearch, setQuickMediaSearch] = useState('');
@@ -1447,7 +1447,7 @@ setBusy(false);
                 </div>
                 <div className="bulk-toolbar">
                   <span className="tri-overview-count"><Layers3 size={16}/>{visibleStandards.length} estándares visibles</span>
-                  <button type="button" onClick={() => setBulkTab('visibility')}><EyeOff size={16}/> Organizar</button>
+                  <button type="button" onClick={() => setBulkTab('manage')}><EyeOff size={16}/> Organizar</button>
                   <button type="button" className="bulk-toolbar-primary" onClick={() => setBulkTab('download')}><Download size={16}/> Descargar ZIP</button>
                 </div>
               </div>
