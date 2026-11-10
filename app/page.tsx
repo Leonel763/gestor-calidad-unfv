@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Download,
   Eye,
+  EyeOff,
   FileText,
   Filter,
   Folder,
