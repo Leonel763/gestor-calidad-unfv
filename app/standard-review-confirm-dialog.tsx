@@ -1,20 +1,21 @@
 'use client';
 
 import {useEffect, useRef} from 'react';
-import {CheckCircle2, ClipboardCheck, ShieldCheck, UserRound, X} from 'lucide-react';
+import {AlertCircle, CheckCircle2, ClipboardCheck, ShieldCheck, UserRound, X} from 'lucide-react';
 
 type Props = {
   standardId: number;
   standardTitle: string;
   reviewerName: string;
   saving: boolean;
+  error: string;
   onConfirm: () => void;
   onClose: () => void;
 };
 
 /** Diálogo accesible que sustituye al aviso nativo del navegador. */
 export function StandardReviewConfirmDialog({
-  standardId, standardTitle, reviewerName, saving, onConfirm, onClose,
+  standardId, standardTitle, reviewerName, saving, error, onConfirm, onClose,
 }: Props) {
   const dialogRef = useRef<HTMLElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -88,6 +89,7 @@ export function StandardReviewConfirmDialog({
           <span>Esta marca es individual. No cambiará las revisiones de otras personas ni constituye una aprobación institucional definitiva.</span>
         </div>
 
+        {error && <div className="review-confirm-error" role="alert"><AlertCircle size={16}/><span>{error}</span></div>}
         <div className="review-confirm-actions">
           <button ref={cancelRef} type="button" className="review-confirm-cancel" disabled={saving}
             onClick={onClose}>Cancelar</button>
