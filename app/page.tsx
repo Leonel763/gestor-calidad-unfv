@@ -35,6 +35,7 @@ import {DocumentFeedback, type DocumentCommentBrief} from './document-feedback';
 import {StandardRequirementsDrawer} from './standard-requirements-drawer';
 import {StandardReviewBadge, StandardReviewControl, type StandardReview} from './standard-review-control';
 import {StandardReviewConfirmDialog} from './standard-review-confirm-dialog';
+import {StandardBulkWorkspace} from './standard-bulk-workspace';
 import {OfficePreview} from './office-preview';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
@@ -186,6 +187,8 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [typeFilter, setTypeFilter] = useState('Todos');
   const [libraryStandardFilter, setLibraryStandardFilter] = useState('todos');
   const [libraryPage, setLibraryPage] = useState(1);
+  const [hiddenStandards, setHiddenStandards] = useState<number[]>([]);
+  const [bulkTab, setBulkTab] = useState<'visibility' | 'download' | null>(null);
   const [quickUpload, setQuickUpload] = useState(false);
   const [quickMedium, setQuickMedium] = useState('');
   const [quickMediaSearch, setQuickMediaSearch] = useState('');
@@ -227,6 +230,34 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   // Mantener la vista de cada usuario durante la sesión de esta pestaña.
   // Se guarda solo navegación y filtros, nunca archivos, contraseñas o formularios.
   const navigationKey = 'unfv-quality-workspace:v1:' + identity.id;
+  const hiddenStandardsKey = 'unfv-hidden-standards-preview:v1:' + identity.id;
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(hiddenStandardsKey) || '[]');
+      if (Array.isArray(stored)) setHiddenStandards(
+        stored.filter((id): id is number => Number.isInteger(id) && standards.some(st => st.id===id))
+          .slice(0, standards.length-1)
+      );
+    } catch {
+      setHiddenStandards([]);
+    }
+  }, [hiddenStandardsKey]);
+
+  function changeHiddenStandards(next:number[]) {
+    const clean = [...new Set(next)].filter(id => standards.some(st => st.id===id)).slice(0,standards.length-1);
+    setHiddenStandards(clean);
+    try { window.localStorage.setItem(hiddenStandardsKey, JSON.stringify(clean)); } catch {}
+    if (clean.includes(standard)) {
+      const first = standards.find(st => !clean.includes(st.id));
+      if (first) {
+        setStandard(first.id);
+        setPoint(first.points[0]?.id || null);
+        setItem(null);
+      }
+    }
+  }
+
 
   // Ajustar el encabezado fijo al alto real del menú, que cambia en móvil.
   useEffect(() => {
@@ -427,7 +458,8 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const allPoints = standards.reduce((sum, st) => sum + st.points.length, 0);
   const numberedSubpoints = all.filter((a) => a.id.split('.').length === 3).length;
   const generalPercent = Math.round((complete / Math.max(all.length, 1)) * 100);
-  const selectedStandard = standards.find((s) => s.id === standard) || standards[0];
+  const visibleStandards = standards.filter(st => !hiddenStandards.includes(st.id));
+  const selectedStandard = visibleStandards.find((s) => s.id === standard) || visibleStandards[0] || standards[0];
   const quickMediaOptions = selectedStandard.points.flatMap((pt) =>
     pt.items.map((it) => ({
       id: it.id,
@@ -547,6 +579,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   }
 
   function openStd(id: number) {
+    if (hiddenStandards.includes(id)) return;
     setQuickMedium('');
     setStandard(id);
     setSection('estandares');
@@ -1352,10 +1385,14 @@ setBusy(false);
                   <h1>Explorador de estándares</h1>
                   <p>Consulta el avance de cada estándar y accede a sus evidencias.</p>
                 </div>
-                <span className="tri-overview-count"><Layers3 size={16}/>{standards.length} estándares</span>
+                <div className="bulk-toolbar">
+                  <span className="tri-overview-count"><Layers3 size={16}/>{visibleStandards.length} estándares visibles</span>
+                  <button type="button" onClick={() => setBulkTab('visibility')}><EyeOff size={16}/> Organizar</button>
+                  <button type="button" className="bulk-toolbar-primary" onClick={() => setBulkTab('download')}><Download size={16}/> Descargar ZIP</button>
+                </div>
               </div>
               <div className="tri-overview-bar">
-                <div><Layers3 size={19}/><strong>{standards.length}</strong><span>Estándares</span></div>
+                <div><Layers3 size={19}/><strong>{visibleStandards.length}</strong><span>Visibles</span></div>
                 <div><ClipboardList size={19}/><strong>{allPoints}</strong><span>Puntos</span></div>
                 <div><FileText size={19}/><strong>{all.length}</strong><span>Medios de logro</span></div>
                 <div className="tri-overview-progress">
@@ -1368,7 +1405,7 @@ setBusy(false);
               <div className="tri-workspace">
                 <section className="tri-standards" aria-label="Lista de estándares">
                   <header className="tri-panel-title">
-                    <h2>Estándares <span>({standards.length})</span></h2>
+                    <h2>Estándares <span>({visibleStandards.length})</span></h2>
                   </header>
                   <details className="tri-standards-filter-dropdown">
                     <summary><Filter size={15}/> Filtrar lista <ChevronRight size={15}/></summary>
@@ -1421,7 +1458,7 @@ setBusy(false);
                 </aside>
                   </details>
                   <div className="tri-standard-list">
-                    {standards.filter((st) => {
+                    {visibleStandards.filter((st) => {
                       const summary = groupSummary(st.points.flatMap((pt) => pt.items));
                       if (explorerStatus !== 'todos' && summary.kind !== explorerStatus) return false;
                       if (query.trim() || statusFilter !== 'todos' || existenceFilter !== 'todos' || typeFilter !== 'Todos')
@@ -1449,7 +1486,7 @@ setBusy(false);
                         </button>
                       );
                     })}
-                    {!standards.some((st) => {
+                    {!visibleStandards.some((st) => {
                       const summary = groupSummary(st.points.flatMap((pt) => pt.items));
                       return (explorerStatus === 'todos' || summary.kind === explorerStatus) &&
                         (!query.trim() && statusFilter === 'todos' && existenceFilter === 'todos' && typeFilter === 'Todos' ||
@@ -1951,6 +1988,17 @@ setBusy(false);
             setReviewConfirmError('');
           }}
           onConfirm={()=>void updateStandardReview(pendingReviewId,'revisado',true)}
+        />
+      )}
+      {bulkTab && (
+        <StandardBulkWorkspace
+          standards={standards}
+          documents={documents}
+          hiddenIds={hiddenStandards}
+          onHiddenIdsChange={changeHiddenStandards}
+          onClose={() => setBulkTab(null)}
+          initialTab={bulkTab}
+          client={sb}
         />
       )}
       {feedbackDoc && (
