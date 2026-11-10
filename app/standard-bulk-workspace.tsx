@@ -278,7 +278,7 @@ export function StandardBulkWorkspace({
         <header className="bulk-header">
           <span className="bulk-header-icon"><Layers3 size={23}/></span>
           <div>
-            <span className="bulk-eyebrow">GESTIÓN DOCUMENTAL · VERSIÓN PRELIMINAR</span>
+            <span className="bulk-eyebrow">GESTIÓN DOCUMENTAL</span>
             <h2 id="bulk-title">Organizar y descargar estándares</h2>
             <p>Organiza la vista o prepara un ZIP con los documentos que elijas.</p>
           </div>
@@ -387,7 +387,7 @@ export function StandardBulkWorkspace({
                   </div>
                 )}
               </div>
-              <p className="bulk-manage-footnote">Las exclusiones son reversibles y solo afectan esta vista preliminar. Los documentos siguen disponibles en Biblioteca y en las descargas.</p>
+              <p className="bulk-manage-footnote">Las exclusiones son reversibles y se guardan por cuenta en este navegador. Los archivos siguen disponibles en Biblioteca y en las descargas.</p>
             </>
           ) : (
             <>
@@ -437,7 +437,7 @@ export function StandardBulkWorkspace({
               </div>
               <div className="bulk-download-estimate">
                 <FileArchive size={17}/> {documentsToExport.length} archivo(s) · Tamaño original estimado: {prettyBytes(selectedSize)}
-                <span>Límite preliminar: 250 MB por ZIP</span>
+                <span>Límite por descarga: 250 MB</span>
               </div>
               {progress && <p className="bulk-progress" role="status"><LoaderCircle size={17}/>{progress}</p>}
             </>
@@ -447,7 +447,7 @@ export function StandardBulkWorkspace({
         </div>
 
         <footer className="bulk-footer">
-          <span>{tab === 'download' ? 'Los archivos originales permanecen intactos.' : 'Las exclusiones son reversibles y solo afectan esta vista preliminar.'}</span>
+          <span>{tab === 'download' ? 'Los archivos originales permanecen intactos.' : 'Las exclusiones son reversibles y se guardan solo en este navegador.'}</span>
           <button type="button" className="bulk-cancel" disabled={busy} onClick={onClose}>Cerrar</button>
           {tab === 'download' && (
             <button type="button" className="bulk-download" disabled={busy || documentsToExport.length===0}
