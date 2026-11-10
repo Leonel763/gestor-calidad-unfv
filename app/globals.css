@@ -2015,3 +2015,77 @@
 .excluded-inline-action span{font-size:11px;color:#577d64}
 .excluded-inline-action button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #b9dac6;background:#e4f5e9;color:#207853;min-height:38px;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:800}
 @media(max-width:560px){.bulk-media-filters{display:grid;grid-template-columns:1fr}.bulk-media-filters input,.bulk-media-filters select,.bulk-media-filters button{width:100%;min-width:0}.bulk-media-list .bulk-standard-code{flex-basis:55px;font-size:10px}.bulk-media-list{max-height:43dvh}.excluded-inline-action button{width:100%}.bulk-tabs button{font-size:9px;gap:3px}.bulk-tabs button svg{width:14px}}
+
+
+/* Prototipo: revisión breve dentro de la ficha; detalle exclusivamente en modal */
+.point-review-entry{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:13px 16px;margin:12px 0 18px;background:#f7fbf8;border:1px solid #dbe9df;border-radius:13px}
+.point-review-entry-main{display:flex;align-items:center;gap:11px;min-width:0}
+.point-review-entry-icon{width:39px;height:39px;flex:0 0 39px;display:grid;place-items:center;border-radius:10px;background:#e4f5e9;color:#188056}
+.point-review-entry-main>span:last-child{display:grid;gap:3px}
+.point-review-entry-main strong{font:800 13px var(--display);color:#21553b}
+.point-review-entry-main small{font-size:11px;color:#799584}
+.point-review-entry-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.point-review-entry-state{background:#ecf1ee;color:#728579;border-radius:99px;padding:7px 10px;font-size:10px;font-weight:800}
+.point-review-entry-state.is-done{background:#e0f4e6;color:#17754c}
+.point-review-entry-actions>button{display:flex;align-items:center;gap:7px;justify-content:center;border-radius:9px;border:1px solid #bde0ca;background:#e7f6ed;color:#17774e;min-height:41px;padding:10px 13px;font-size:11px;font-weight:800}
+.point-review-entry-actions>button:hover{background:#d9eee1}
+.point-review-entry-actions>button:focus-visible{outline:3px solid #9cd8b3;outline-offset:2px}
+.point-review-overlay{position:fixed;inset:0;z-index:300;background:#0c30245f;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;padding:15px}
+.point-review-dialog{display:flex;flex-direction:column;overflow:hidden;width:min(760px,100%);max-height:calc(100dvh - 30px);border:1px solid #d7e8dc;border-radius:21px;background:white;box-shadow:0 25px 90px #092d2442;color:#203c30}
+.point-review-header{display:flex;align-items:flex-start;gap:13px;padding:25px 26px 16px;flex-shrink:0}
+.point-review-heading-icon{flex:0 0 52px;width:52px;height:52px;display:grid;place-items:center;background:#e2f4e8;color:#147b50;border-radius:15px}
+.point-review-heading-copy{flex:1;min-width:0}
+.point-review-heading-copy h2{font:800 23px/1.35 var(--display);margin:0 0 5px;color:#193d2c}
+.point-review-heading-copy p{margin:0;font-size:12px;color:#789081;line-height:1.5}
+.point-review-close{display:grid;place-items:center;flex:0 0 37px;width:37px;height:37px;background:#f2f7f3;color:#698473;border:0;border-radius:10px}
+.point-review-close:hover{background:#e6f0e8}
+.point-review-statbar{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:0;margin:0 26px 15px;padding:13px;border:1px solid #dcebe0;border-radius:13px;background:#edf8f1;align-items:center}
+.point-review-statbar>span{display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center;text-align:center}
+.point-review-statbar>span:not(:last-child){border-right:1px solid #c6ddcd}
+.point-review-statbar .point-review-state{display:inline-flex;flex-direction:row;gap:7px;border:0;margin:0 8px;border-radius:99px;padding:9px 11px;font-weight:800;font-size:11px;white-space:normal;min-height:36px;background:#fff;color:#7a8e7e}
+.point-review-statbar .point-review-state.is-partial{background:#fff3da;color:#94682a}
+.point-review-statbar .point-review-state.is-done{background:#d4efdd;color:#126d47}
+.point-review-count strong,.point-review-percent strong{font-size:21px;color:#175b3b;line-height:1.1}
+.point-review-count small,.point-review-percent small{font-size:10px;color:#6e8b7c}
+.point-review-scroll{display:grid;gap:7px;overflow-y:auto;overscroll-behavior:contain;padding:3px 26px 16px;min-height:0;scrollbar-width:thin}
+.point-review-choice{display:flex;align-items:center;gap:11px;padding:12px 15px;min-height:49px;border:1px solid #e1e8e3;border-radius:10px;background:#fff;cursor:pointer;min-width:0}
+.point-review-choice.is-checked{border-color:#c7e5d2;background:#f9fdfa}
+.point-review-choice:hover{border-color:#b5dcc3}
+.point-review-choice:focus-within{outline:3px solid #a6d8b7;outline-offset:2px}
+.point-review-choice input{position:absolute;opacity:0;width:1px;height:1px}
+.point-review-custom-check{display:grid;place-items:center;flex:0 0 27px;width:27px;height:27px;border:2px solid #b7cbbd;border-radius:7px;background:#fff;color:#fff}
+.point-review-choice.is-checked .point-review-custom-check{border-color:#178253;background:#178253}
+.point-review-choice-copy{display:grid;gap:3px;min-width:0}
+.point-review-choice-copy strong{font-size:12px;color:#234b35}
+.point-review-choice-copy small{font-size:10px;color:#829789;line-height:1.45;max-width:660px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.point-review-empty{margin:0;padding:15px;color:#718878;font-size:12px}
+.point-review-footer{flex:0 0 auto;border-top:1px solid #e7eee8;background:#fbfdfb;padding:13px 26px 17px}
+.point-review-footnote{font-size:10px;line-height:1.55;color:#84968a;margin:0 0 12px}
+.point-review-buttons{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.point-review-buttons button{display:inline-flex;gap:8px;align-items:center;justify-content:center;min-height:43px;border:1px solid transparent;border-radius:10px;padding:10px 14px;font-size:11px;font-weight:800}
+.point-review-cancel{background:#fff;border-color:#d5e4d9!important;color:#52745e}
+.point-review-all{background:#eff8f2;border-color:#bad9c5!important;color:#267c52}
+.point-review-save{background:#157d52;color:#fff}
+.point-review-save:hover:not(:disabled){background:#0d6740}
+.point-review-buttons button:focus-visible,.point-review-close:focus-visible{outline:3px solid #a0d6b6;outline-offset:2px}
+.point-review-buttons button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:640px){
+ .point-review-entry{padding:11px;gap:10px}
+ .point-review-entry-actions{width:100%;justify-content:space-between}
+ .point-review-overlay{padding:7px}
+ .point-review-dialog{max-height:calc(100dvh - 14px);border-radius:15px}
+ .point-review-header{padding:16px 13px 12px;gap:10px}
+ .point-review-heading-icon{flex:0 0 42px;width:42px;height:42px}
+ .point-review-heading-copy h2{font-size:19px}
+ .point-review-statbar{margin:0 13px 13px;padding:10px 5px}
+ .point-review-statbar .point-review-state{font-size:9px;padding:8px}
+ .point-review-count strong,.point-review-percent strong{font-size:18px}
+ .point-review-scroll{padding:2px 13px 12px}
+ .point-review-choice{padding:10px;min-height:48px}
+ .point-review-footer{padding:11px 13px max(13px,env(safe-area-inset-bottom))}
+ .point-review-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .point-review-buttons button{padding:10px 6px}
+ .point-review-save{grid-column:1/-1;grid-row:1}
+ .point-review-choice-copy small{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+}
+@media(prefers-reduced-motion:reduce){.point-review-dialog{scroll-behavior:auto}}
