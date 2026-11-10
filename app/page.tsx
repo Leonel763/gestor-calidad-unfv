@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Download,
   Eye,
+  EyeOff,
   FileText,
   Filter,
   Folder,
@@ -35,6 +36,8 @@ import {DocumentFeedback, type DocumentCommentBrief} from './document-feedback';
 import {StandardRequirementsDrawer} from './standard-requirements-drawer';
 import {StandardReviewBadge, StandardReviewControl, type StandardReview} from './standard-review-control';
 import {StandardReviewConfirmDialog} from './standard-review-confirm-dialog';
+import {StandardBulkWorkspace} from './standard-bulk-workspace';
+import {PointReviewDialog} from './point-review-dialog';
 import {OfficePreview} from './office-preview';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
@@ -186,6 +189,11 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [typeFilter, setTypeFilter] = useState('Todos');
   const [libraryStandardFilter, setLibraryStandardFilter] = useState('todos');
   const [libraryPage, setLibraryPage] = useState(1);
+  const [hiddenStandards, setHiddenStandards] = useState<number[]>([]);
+  const [excludedMedia, setExcludedMedia] = useState<string[]>([]);
+  const [reviewedPointsByStandard, setReviewedPointsByStandard] = useState<Record<string,string[]>>({});
+  const [pointReviewOpen,setPointReviewOpen] = useState(false);
+  const [bulkTab, setBulkTab] = useState<'manage' | 'download' | null>(null);
   const [quickUpload, setQuickUpload] = useState(false);
   const [quickMedium, setQuickMedium] = useState('');
   const [quickMediaSearch, setQuickMediaSearch] = useState('');
@@ -227,6 +235,81 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   // Mantener la vista de cada usuario durante la sesión de esta pestaña.
   // Se guarda solo navegación y filtros, nunca archivos, contraseñas o formularios.
   const navigationKey = 'unfv-quality-workspace:v1:' + identity.id;
+  const hiddenStandardsKey = 'unfv-hidden-standards-preview:v1:' + identity.id;
+  const excludedMediaKey = 'unfv-excluded-media-preview:v1:' + identity.id;
+  const reviewedPointsKey = 'unfv-point-reviews-preview:v1:' + identity.id;
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(hiddenStandardsKey) || '[]');
+      if (Array.isArray(stored)) setHiddenStandards(
+        stored.filter((id): id is number => Number.isInteger(id) && standards.some(st => st.id===id))
+          .slice(0, standards.length-1)
+      );
+    } catch {
+      setHiddenStandards([]);
+    }
+  }, [hiddenStandardsKey]);
+
+  useEffect(() => {
+    try {
+      const stored: unknown = JSON.parse(window.localStorage.getItem(excludedMediaKey) || '[]');
+      if (Array.isArray(stored)) setExcludedMedia(
+        [...new Set(stored.filter((id): id is string => typeof id === 'string' && all.some(row => row.id === id)))]
+      );
+    } catch { setExcludedMedia([]); }
+  }, [excludedMediaKey]);
+
+  useEffect(() => {
+    try {
+      const saved: unknown = JSON.parse(window.localStorage.getItem(reviewedPointsKey) || '{}');
+      if(!saved || typeof saved!=='object' || Array.isArray(saved)) return;
+      const allowed:Record<string,string[]>={};
+      for(const st of standards){
+        const raw=(saved as Record<string,unknown>)[String(st.id)];
+        if(!Array.isArray(raw))continue;
+        const valid=new Set(st.points.map(point=>point.id));
+        allowed[String(st.id)]=[...new Set(raw.filter((id):id is string=>typeof id==='string' && valid.has(id)))];
+      }
+      setReviewedPointsByStandard(allowed);
+    } catch { setReviewedPointsByStandard({}); }
+  },[reviewedPointsKey]);
+
+  function savePointReview(standardId:number,checkedIds:string[]){
+    const active=new Set(standards.find(st=>st.id===standardId)?.points.map(pt=>pt.id)||[]);
+    const clean=[...new Set(checkedIds)].filter(id=>active.has(id));
+    const next={...reviewedPointsByStandard,[String(standardId)]:clean};
+    try {
+      window.localStorage.setItem(reviewedPointsKey,JSON.stringify(next));
+      setReviewedPointsByStandard(next);
+      setPointReviewOpen(false);
+      showAlert('Tu revisión por puntos se guardó en este navegador.','success');
+    } catch {
+      showAlert('El navegador bloqueó el guardado. Intenta habilitar el almacenamiento local.');
+    }
+  }
+
+  function changeExcludedMedia(next:string[]) {
+    const clean = [...new Set(next)].filter(id => all.some(row => row.id===id));
+    setExcludedMedia(clean);
+    try { window.localStorage.setItem(excludedMediaKey, JSON.stringify(clean)); } catch {}
+    if (item && clean.includes(item)) setItem(null);
+  }
+
+  function changeHiddenStandards(next:number[]) {
+    const clean = [...new Set(next)].filter(id => standards.some(st => st.id===id)).slice(0,standards.length-1);
+    setHiddenStandards(clean);
+    try { window.localStorage.setItem(hiddenStandardsKey, JSON.stringify(clean)); } catch {}
+    if (clean.includes(standard)) {
+      const first = standards.find(st => !clean.includes(st.id));
+      if (first) {
+        setStandard(first.id);
+        setPoint(first.points[0]?.id || null);
+        setItem(null);
+      }
+    }
+  }
+
 
   // Ajustar el encabezado fijo al alto real del menú, que cambia en móvil.
   useEffect(() => {
@@ -409,7 +492,10 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   return tracking.find((t) => t.point_id === id)?.status || 'pendiente';
 };
   const getDocs = (id: string) => documents.filter((d) => d.point_id === id);
-  const groupSummary = (items: Item[]) => summarizeStatuses(items.map((it) => getStatus(it.id)));
+  const isExcluded = (id:string) => excludedMedia.includes(id);
+  const groupSummary = (items: Item[]) => summarizeStatuses(items.filter(it => !isExcluded(it.id)).map(it => getStatus(it.id)));
+  const visibleStandards = standards.filter(st => !hiddenStandards.includes(st.id));
+  const activeRecords = all.filter(a => !hiddenStandards.includes(a.standard) && !isExcluded(a.id));
   const reviewsFor=(id:number)=>standardReviews.filter((review)=>review.standard_id===id);
   const myReviewFor=(id:number)=>standardReviews.find((review)=>review.standard_id===id && review.reviewed_by===identity.id);
   const reviewOutdated=(review:StandardReview)=>{
@@ -420,16 +506,16 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   };
   const validReviewCount=(id:number)=>reviewsFor(id).filter((review)=>review.status==='revisado' && !reviewOutdated(review)).length;
 
-  const complete = all.filter((a) => getStatus(a.id) === 'completo').length;
-  const simulated = all.filter((a) => getStatus(a.id) === 'en_proceso').length;
-  const need = all.filter((a) => getStatus(a.id) === 'complementar').length;
-  const pending = all.filter((a) => getStatus(a.id) === 'pendiente').length;
-  const allPoints = standards.reduce((sum, st) => sum + st.points.length, 0);
-  const numberedSubpoints = all.filter((a) => a.id.split('.').length === 3).length;
-  const generalPercent = Math.round((complete / Math.max(all.length, 1)) * 100);
-  const selectedStandard = standards.find((s) => s.id === standard) || standards[0];
+  const complete = activeRecords.filter(a => getStatus(a.id) === 'completo').length;
+  const simulated = activeRecords.filter(a => getStatus(a.id) === 'en_proceso').length;
+  const need = activeRecords.filter(a => getStatus(a.id) === 'complementar').length;
+  const pending = activeRecords.filter(a => getStatus(a.id) === 'pendiente').length;
+  const allPoints = visibleStandards.reduce((sum, st) => sum + st.points.filter(pt => pt.items.some(it => !isExcluded(it.id))).length, 0);
+  const numberedSubpoints = activeRecords.filter(a => a.id.split('.').length === 3).length;
+  const generalPercent = activeRecords.length ? Math.round(complete / activeRecords.length * 100) : 0;
+  const selectedStandard = visibleStandards.find((s) => s.id === standard) || visibleStandards[0] || standards[0];
   const quickMediaOptions = selectedStandard.points.flatMap((pt) =>
-    pt.items.map((it) => ({
+    pt.items.filter(it => !isExcluded(it.id)).map((it) => ({
       id: it.id,
       point: pt.id,
       description: it.text?.trim() || normalizeType(it.type),
@@ -447,11 +533,17 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       )
     : quickMediaOptions;
   const selectedQuickMedia = quickMediaOptions.find((option) => option.id === quickMedium);
-  const selected = all.find((a) => a.id === item) || null;
+  const selected = activeRecords.find((a) => a.id === item) || null;
   const selectedStandardSummary = groupSummary(selectedStandard.points.flatMap((pt) => pt.items));
+  const activeReviewPoints = selectedStandard.points
+    .filter(pt => pt.items.some(it => !isExcluded(it.id)))
+    .map(pt => ({id:pt.id,criterion:pt.criterion}));
+  const activeReviewPointIds=new Set(activeReviewPoints.map(pt=>pt.id));
+  const savedPointReview=reviewedPointsByStandard[String(selectedStandard.id)]||[];
+  const activeReviewedCount=savedPointReview.filter(id=>activeReviewPointIds.has(id)).length;
 
   const filteredMatrixItems = useMemo(() => {
-    return all.filter((record) => {
+    return activeRecords.filter((record) => {
       const haystack = [
         record.id,
         record.text,
@@ -472,12 +564,12 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       if (typeFilter !== 'Todos' && normalizeType(record.type) !== typeFilter) return false;
       return true;
     });
-  }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents]);
+  }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents, excludedMedia, hiddenStandards]);
 
   // Datos filtrados para la vista compacta; no alteran las evidencias de Supabase.
   const filteredIds = new Set(filteredMatrixItems.map((record) => record.id));
   const visiblePoints = selectedStandard.points
-    .map((pt) => ({ ...pt, visibleItems: pt.items.filter((it) => filteredIds.has(it.id)) }))
+    .map((pt) => ({ ...pt, visibleItems: pt.items.filter((it) => !isExcluded(it.id) && filteredIds.has(it.id)) }))
     .filter((pt) => pt.visibleItems.length > 0);
 
   const libraryRows = useMemo(() => {
@@ -547,6 +639,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   }
 
   function openStd(id: number) {
+    if (hiddenStandards.includes(id)) return;
     setQuickMedium('');
     setStandard(id);
     setSection('estandares');
@@ -613,7 +706,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   }
 
   function openQuickUploadFor(code: string) {
-    const record = all.find((row) => row.id === code);
+    const record = activeRecords.find((row) => row.id === code);
     if (!record || busy) return;
     setStandard(record.standard);
     setQuickMedium(record.id);
@@ -1219,15 +1312,15 @@ setBusy(false);
                       </div>
                     </div>
                     <div className="home-v2-progress-description">
-                      <strong>{complete} de {all.length}</strong>
+                      <strong>{complete} de {activeRecords.length}</strong>
                       <span>medios de logro completados</span>
                       <div className="home-v2-progress-line" aria-hidden="true">
                         <span style={{ width: `${generalPercent}%` }} />
                       </div>
                       <div className="home-v2-progress-totals">
-                        <span><Layers3 size={16}/><b>{standards.length}</b><small>Estándares</small></span>
+                        <span><Layers3 size={16}/><b>{visibleStandards.length}</b><small>Estándares</small></span>
                         <span><ClipboardList size={16}/><b>{allPoints}</b><small>Puntos</small></span>
-                        <span><FileText size={16}/><b>{all.length}</b><small>Medios</small></span>
+                        <span><FileText size={16}/><b>{activeRecords.length}</b><small>Medios</small></span>
                       </div>
                     </div>
                   </div>
@@ -1278,7 +1371,7 @@ setBusy(false);
                     <span>{standards.length} estándares</span>
                   </div>
                   <div className="home-v2-standards-list">
-                    {standards.slice(0, 3).map((st) => {
+                    {visibleStandards.slice(0, 3).map((st) => {
                       const stItems = st.points.flatMap((pt) => pt.items);
                       const summary = groupSummary(stItems);
                       return (
@@ -1352,23 +1445,27 @@ setBusy(false);
                   <h1>Explorador de estándares</h1>
                   <p>Consulta el avance de cada estándar y accede a sus evidencias.</p>
                 </div>
-                <span className="tri-overview-count"><Layers3 size={16}/>{standards.length} estándares</span>
+                <div className="bulk-toolbar">
+                  <span className="tri-overview-count"><Layers3 size={16}/>{visibleStandards.length} estándares visibles</span>
+                  <button type="button" onClick={() => setBulkTab('manage')}><EyeOff size={16}/> Organizar</button>
+                  <button type="button" className="bulk-toolbar-primary" onClick={() => setBulkTab('download')}><Download size={16}/> Descargar ZIP</button>
+                </div>
               </div>
               <div className="tri-overview-bar">
-                <div><Layers3 size={19}/><strong>{standards.length}</strong><span>Estándares</span></div>
+                <div><Layers3 size={19}/><strong>{visibleStandards.length}</strong><span>Visibles</span></div>
                 <div><ClipboardList size={19}/><strong>{allPoints}</strong><span>Puntos</span></div>
-                <div><FileText size={19}/><strong>{all.length}</strong><span>Medios de logro</span></div>
+                <div><FileText size={19}/><strong>{activeRecords.length}</strong><span>Medios activos</span></div>
                 <div className="tri-overview-progress">
                   <span>Avance general</span>
                   <strong>{generalPercent}%</strong>
                   <span className="tri-progress"><span style={{ width: generalPercent + '%' }} /></span>
-                  <small>{complete} de {all.length} completados</small>
+                  <small>{complete} de {activeRecords.length} completados</small>
                 </div>
               </div>
               <div className="tri-workspace">
                 <section className="tri-standards" aria-label="Lista de estándares">
                   <header className="tri-panel-title">
-                    <h2>Estándares <span>({standards.length})</span></h2>
+                    <h2>Estándares <span>({visibleStandards.length})</span></h2>
                   </header>
                   <details className="tri-standards-filter-dropdown">
                     <summary><Filter size={15}/> Filtrar lista <ChevronRight size={15}/></summary>
@@ -1421,7 +1518,7 @@ setBusy(false);
                 </aside>
                   </details>
                   <div className="tri-standard-list">
-                    {standards.filter((st) => {
+                    {visibleStandards.filter((st) => {
                       const summary = groupSummary(st.points.flatMap((pt) => pt.items));
                       if (explorerStatus !== 'todos' && summary.kind !== explorerStatus) return false;
                       if (query.trim() || statusFilter !== 'todos' || existenceFilter !== 'todos' || typeFilter !== 'Todos')
@@ -1440,7 +1537,7 @@ setBusy(false);
                             <strong>{st.title}</strong>
                             <span className="tri-standard-progressline"><span style={{width: summary.percent + '%'}}/></span>
                             <small>{summary.completed}/{summary.total} medios</small>
-                            <StandardReviewBadge review={myReviewFor(st.id)} stale={myReviewFor(st.id) ? reviewOutdated(myReviewFor(st.id)!) : false} reviewedCount={validReviewCount(st.id)}/>
+                            <small>{(reviewedPointsByStandard[String(st.id)]||[]).filter(id=>st.points.some(pt=>pt.id===id && pt.items.some(it=>!isExcluded(it.id)))).length} puntos revisados</small>
                           </span>
                           <span className="tri-standard-right">
                             <span className={'tri-standard-state state-' + summary.kind}>{summary.percent}%</span>
@@ -1449,7 +1546,7 @@ setBusy(false);
                         </button>
                       );
                     })}
-                    {!standards.some((st) => {
+                    {!visibleStandards.some((st) => {
                       const summary = groupSummary(st.points.flatMap((pt) => pt.items));
                       return (explorerStatus === 'todos' || summary.kind === explorerStatus) &&
                         (!query.trim() && statusFilter === 'todos' && existenceFilter === 'todos' && typeFilter === 'Todos' ||
@@ -1476,15 +1573,25 @@ setBusy(false);
                     </div>
                     <button type="button" className="tri-add-button" onClick={startQuickUpload}><Upload size={16}/> Cargar documento</button>
                   </div>
-                  <StandardReviewControl
-                    standardId={selectedStandard.id}
-                    reviews={reviewsFor(selectedStandard.id)}
-                    myUserId={identity.id}
-                    stale={myReviewFor(selectedStandard.id) ? reviewOutdated(myReviewFor(selectedStandard.id)!) : false}
-                    hasNewDocumentsAfter={reviewOutdated}
-                    saving={savingReviewId===selectedStandard.id}
-                    onChange={(next)=>void updateStandardReview(selectedStandard.id,next)}
-                  />
+                  <div className="point-review-entry">
+                    <div className="point-review-entry-main">
+                      <span className="point-review-entry-icon"><ClipboardList size={19}/></span>
+                      <span>
+                        <strong>Mi revisión</strong>
+                        <small>{activeReviewedCount} de {activeReviewPoints.length} puntos revisados</small>
+                      </span>
+                    </div>
+                    <div className="point-review-entry-actions">
+                      <span className={activeReviewedCount===activeReviewPoints.length && activeReviewPoints.length>0
+                        ? 'point-review-entry-state is-done' : 'point-review-entry-state'}>
+                        {activeReviewPoints.length>0 && activeReviewedCount===activeReviewPoints.length
+                          ? 'Revisado ✓' : activeReviewedCount>0 ? 'En revisión' : 'Sin revisar'}
+                      </span>
+                      <button type="button" onClick={()=>setPointReviewOpen(true)}>
+                        <ClipboardList size={16}/> Revisar puntos <ChevronRight size={16}/>
+                      </button>
+                    </div>
+                  </div>
                   <div className="tri-points-head">
                     <div><h3>Puntos de evaluación</h3><p>Selecciona un punto para ver sus medios de logro.</p></div>
                     <details className="tri-standard-info">
@@ -1951,6 +2058,29 @@ setBusy(false);
             setReviewConfirmError('');
           }}
           onConfirm={()=>void updateStandardReview(pendingReviewId,'revisado',true)}
+        />
+      )}
+      {pointReviewOpen && (
+        <PointReviewDialog
+          standardId={selectedStandard.id}
+          standardTitle={selectedStandard.title}
+          points={activeReviewPoints}
+          savedIds={savedPointReview}
+          onSave={ids=>savePointReview(selectedStandard.id,ids)}
+          onClose={()=>setPointReviewOpen(false)}
+        />
+      )}
+      {bulkTab && (
+        <StandardBulkWorkspace
+          standards={standards}
+          documents={documents}
+          hiddenIds={hiddenStandards}
+          onHiddenIdsChange={changeHiddenStandards}
+          excludedMedia={excludedMedia}
+          onExcludedMediaChange={changeExcludedMedia}
+          onClose={() => setBulkTab(null)}
+          initialTab={bulkTab}
+          client={sb}
         />
       )}
       {feedbackDoc && (
