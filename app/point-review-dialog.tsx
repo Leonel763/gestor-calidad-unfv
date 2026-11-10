@@ -96,7 +96,7 @@ export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSa
         </div>
 
         <div className="point-review-footer">
-          <p className="point-review-footnote">Versión preliminar: los checks se guardan por cuenta en este navegador. No cambian el estado de las evidencias.</p>
+          <p className="point-review-footnote">Tus checks se guardan por cuenta en este navegador, sin sincronizarse con otros dispositivos. No cambian las evidencias ni las revisiones registradas anteriormente.</p>
           <div className="point-review-buttons">
             <button ref={cancelRef} className="point-review-cancel" type="button" onClick={onClose}>Cancelar</button>
             <button className="point-review-all" type="button" disabled={!total} onClick={toggleAll}>
