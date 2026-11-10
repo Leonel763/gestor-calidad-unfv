@@ -407,14 +407,15 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
 };
   const getDocs = (id: string) => documents.filter((d) => d.point_id === id);
   const groupSummary = (items: Item[]) => summarizeStatuses(items.map((it) => getStatus(it.id)));
-  const reviewFor=(id:number)=>standardReviews.find((review)=>review.standard_id===id);
-  const reviewOutdated=(id:number)=>{
-    const review=reviewFor(id);
-    if (!review || review.status!=='revisado') return false;
+  const reviewsFor=(id:number)=>standardReviews.filter((review)=>review.standard_id===id);
+  const myReviewFor=(id:number)=>standardReviews.find((review)=>review.standard_id===id && review.reviewed_by===identity.id);
+  const reviewOutdated=(review:StandardReview)=>{
+    if (review.status!=='revisado') return false;
     const reviewedAt=new Date(review.reviewed_at).getTime();
     return documents.some((doc)=>new Date(doc.created_at).getTime()>reviewedAt &&
-      all.some((row)=>row.id===doc.point_id && row.standard===id));
+      all.some((row)=>row.id===doc.point_id && row.standard===review.standard_id));
   };
+  const validReviewCount=(id:number)=>reviewsFor(id).filter((review)=>review.status==='revisado' && !reviewOutdated(review)).length;
 
   const complete = all.filter((a) => getStatus(a.id) === 'completo').length;
   const simulated = all.filter((a) => getStatus(a.id) === 'en_proceso').length;
@@ -551,33 +552,35 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   }
 
   async function updateStandardReview(id:number,status:'en_revision'|'revisado'|null) {
-    if (!sb || !identity.approved || identity.role!=='admin' || savingReviewId!==null) return;
+    if (!sb || !identity.approved || savingReviewId!==null) return;
     if (status==='revisado') {
       const title=standards.find((value)=>value.id===id)?.title||'';
-      if (!window.confirm('¿Confirmas que revisaste el estándar '+id+' — '+title+' y que las evidencias son conformes?')) return;
+      if (!window.confirm('¿Confirmas que revisaste el estándar '+id+' — '+title+' y que consideras conformes las evidencias? Esta marca quedará a tu nombre.')) return;
     }
     setSavingReviewId(id);
     try {
       if (status===null) {
-        const {data,error}=await sb.from('standard_reviews').delete().eq('standard_id',id).select('standard_id');
+        const {data,error}=await sb.from('standard_reviews').delete()
+          .eq('standard_id',id).eq('reviewed_by',identity.id)
+          .select('standard_id,reviewed_by');
         if (error) throw error;
-        if (!data?.length) throw new Error('No se pudo retirar la revisión.');
-        setStandardReviews((prev)=>prev.filter((value)=>value.standard_id!==id));
-        showAlert('Marca de revisión retirada.', 'success');
+        if (!data?.length) throw new Error('No se pudo retirar tu revisión.');
+        setStandardReviews((prev)=>prev.filter((value)=>!(value.standard_id===id && value.reviewed_by===identity.id)));
+        showAlert('Retiraste tu propia marca de revisión.', 'success');
       } else {
-        // El trigger SQL valida al administrador y fija revisor y fecha reales.
+        // Supabase impone identidad y fecha; la clave compuesta evita afectar otras cuentas.
         const {data,error}=await sb.from('standard_reviews')
           .upsert({standard_id:id,status,reviewed_by:identity.id,reviewer_name:identity.full_name},
-            {onConflict:'standard_id'})
+            {onConflict:'standard_id,reviewed_by'})
           .select('standard_id,status,reviewed_by,reviewer_name,reviewed_at')
           .single();
-        if (error || !data) throw error||new Error('No se pudo guardar la revisión.');
+        if (error || !data) throw error||new Error('No se pudo guardar tu revisión.');
         const saved=data as StandardReview;
-        setStandardReviews((prev)=>[...prev.filter((value)=>value.standard_id!==id),saved]);
-        showAlert(status==='revisado'?'Estándar marcado como revisado.':'Revisión iniciada.', 'success');
+        setStandardReviews((prev)=>[...prev.filter((value)=>!(value.standard_id===id && value.reviewed_by===identity.id)),saved]);
+        showAlert(status==='revisado'?'Tu revisión se registró correctamente.':'Se registró que estás revisando el estándar.', 'success');
       }
     }catch(reason){
-      showAlert(reason instanceof Error ? reason.message : 'No se pudo actualizar la revisión.');
+      showAlert(reason instanceof Error ? reason.message : 'No se pudo actualizar tu revisión.');
     }finally{
       setSavingReviewId(null);
     }
@@ -1427,7 +1430,7 @@ setBusy(false);
                             <strong>{st.title}</strong>
                             <span className="tri-standard-progressline"><span style={{width: summary.percent + '%'}}/></span>
                             <small>{summary.completed}/{summary.total} medios</small>
-                            <StandardReviewBadge review={reviewFor(st.id)} stale={reviewOutdated(st.id)}/>
+                            <StandardReviewBadge review={myReviewFor(st.id)} stale={myReviewFor(st.id) ? reviewOutdated(myReviewFor(st.id)!) : false} reviewedCount={validReviewCount(st.id)}/>
                           </span>
                           <span className="tri-standard-right">
                             <span className={'tri-standard-state state-' + summary.kind}>{summary.percent}%</span>
@@ -1465,9 +1468,10 @@ setBusy(false);
                   </div>
                   <StandardReviewControl
                     standardId={selectedStandard.id}
-                    review={reviewFor(selectedStandard.id)}
-                    stale={reviewOutdated(selectedStandard.id)}
-                    canReview={identity.role==='admin'}
+                    reviews={reviewsFor(selectedStandard.id)}
+                    myUserId={identity.id}
+                    stale={myReviewFor(selectedStandard.id) ? reviewOutdated(myReviewFor(selectedStandard.id)!) : false}
+                    hasNewDocumentsAfter={reviewOutdated}
                     saving={savingReviewId===selectedStandard.id}
                     onChange={(next)=>void updateStandardReview(selectedStandard.id,next)}
                   />
