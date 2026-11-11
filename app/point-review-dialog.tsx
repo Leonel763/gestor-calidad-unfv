@@ -18,7 +18,8 @@ export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSa
   const [checked,setChecked]=useState<string[]>(()=>saved);
   const [search,setSearch]=useState('');
   const [unreviewedOnly,setUnreviewedOnly]=useState(false);
-  const [expanded,setExpanded]=useState<string[]>(()=>points.map(point=>point.id));
+  // Abrir los grupos bajo demanda evita una lista inicial demasiado extensa.
+  const [expanded,setExpanded]=useState<string[]>([]);
   const closeRef=useRef<HTMLButtonElement>(null);
   const dialogRef=useRef<HTMLDivElement>(null);
   const onCloseRef=useRef(onClose);

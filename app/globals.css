@@ -2373,3 +2373,71 @@
 .ux-review-medium-list{padding:6px}
 .ux-bulk-quick-filters button{flex:1 1 auto}
 }
+
+
+/* Corrección responsiva de Mi revisión: no comprimir las filas de los grupos.
+   El grid anterior repartía la altura disponible y cortaba los medios expandibles. */
+.point-review-dialog{min-height:0}
+.point-review-scroll.ux-review-groups{
+  display:block;
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior-y:contain;
+  scrollbar-gutter:stable;
+  padding:12px 16px 18px;
+}
+.ux-review-groups>.ux-review-point{
+  display:block;
+  height:auto;
+  min-height:max-content;
+  margin:0 0 9px;
+  overflow:hidden;
+}
+.ux-review-groups>.ux-review-point:last-child{margin-bottom:0}
+.ux-review-point-heading{
+  width:100%;
+  min-width:0;
+  height:auto;
+  align-items:center;
+}
+.ux-review-point-title{min-width:0}
+.ux-review-medium-list{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  height:auto;
+  overflow:visible;
+}
+.ux-review-medium-list>.ux-review-medium{
+  display:flex;
+  flex:0 0 auto;
+  min-width:0;
+  width:100%;
+  height:auto;
+  align-items:center;
+}
+.ux-review-medium .point-review-choice-copy{min-width:0;flex:1}
+.ux-review-medium .point-review-choice-copy small{
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  white-space:normal;
+  overflow:hidden;
+  overflow-wrap:anywhere;
+  max-width:100%;
+}
+@media(max-width:620px){
+  .point-review-scroll.ux-review-groups{padding:8px 9px 13px;scrollbar-gutter:auto}
+  .ux-review-groups>.ux-review-point{margin-bottom:8px}
+  .ux-review-point-heading{padding:10px;gap:7px}
+  .ux-review-point-count{flex:0 0 auto}
+  .ux-review-medium-list>.ux-review-medium{padding:10px;gap:9px;min-height:60px}
+  .ux-review-medium .point-review-custom-check{flex-basis:26px;width:26px;height:26px}
+}
+@media(max-height:650px){
+ .point-review-header{padding-top:12px;padding-bottom:9px}
+ .point-review-statbar{margin-bottom:8px}
+ .point-review-footnote{line-height:1.35;margin-bottom:6px}
+}
