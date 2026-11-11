@@ -14,9 +14,11 @@ type Props = {
   onClose:()=>void;
   saving:boolean;
   hasLegacy:boolean;
+  teamReviews:Array<{point_id:string;reviewer_id:string;reviewer_name:string;reviewed_at:string}>;
+  currentUserId:string;
 };
 
-export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSave,onClose,saving,hasLegacy}:Props){
+export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSave,onClose,saving,hasLegacy,teamReviews,currentUserId}:Props){
   const allowedIds=useMemo(()=>new Set(points.map(point=>point.id)),[points]);
   const [checked,setChecked]=useState<string[]>(()=>savedIds.filter(id=>allowedIds.has(id)));
   const cancelRef=useRef<HTMLButtonElement>(null);
@@ -97,6 +99,26 @@ export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSa
           )):(
             <p className="point-review-empty">Este estándar no tiene puntos activos para revisar.</p>
           )}
+          <details className="point-review-team-panel">
+            <summary>
+              <span>Revisiones de otras cuentas</span>
+              <span>{new Set(teamReviews.filter(r=>r.reviewer_id!==currentUserId).map(r=>r.reviewer_id)).size} personas</span>
+            </summary>
+            <div className="point-review-team-content">
+              {points.map(pt=>{
+                const reviewers=teamReviews.filter(row=>row.point_id===pt.id && row.reviewer_id!==currentUserId);
+                if(!reviewers.length)return null;
+                return <div key={pt.id} className="point-review-team-point">
+                  <strong>Punto {pt.id}</strong>
+                  {reviewers.map(row=><small key={row.reviewer_id}>
+                    {row.reviewer_name} · {new Date(row.reviewed_at).toLocaleDateString('es-PE')}
+                  </small>)}
+                </div>;
+              })}
+              {!teamReviews.some(r=>r.reviewer_id!==currentUserId) &&
+                <p>Las demás cuentas aún no registraron revisiones de estos puntos.</p>}
+            </div>
+          </details>
         </div>
 
         <div className="point-review-footer">
