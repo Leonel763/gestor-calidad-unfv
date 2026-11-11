@@ -2345,3 +2345,31 @@
 }
 .ux-media-actions[open]{z-index:27}
 .ux-media-actions[open]>div{z-index:28}
+
+
+/* Revisión granular por medio de logro: grupos desplegables. */
+.ux-review-groups{padding:12px 16px;display:grid;gap:8px;align-content:start}
+.ux-review-point{border:1px solid #dce9e0;background:#fff;border-radius:11px;overflow:hidden}
+.ux-review-point-heading{display:flex;align-items:center;gap:9px;width:100%;min-height:53px;padding:10px 13px;border:0;background:#f7fbf8;cursor:pointer;text-align:left;color:#244b37}
+.ux-review-point-heading:hover{background:#eff8f2}
+.ux-review-point-heading:focus-visible{outline:3px solid #9dd5b2;outline-offset:-3px}
+.ux-review-point-chevron{display:grid;place-items:center;color:#548168;flex-shrink:0}
+.ux-review-point-heading[aria-expanded=false] .ux-review-point-chevron svg{transform:rotate(-90deg)}
+.ux-review-point-title{min-width:0;flex:1;display:grid;gap:3px}
+.ux-review-point-title strong{font-size:12px}
+.ux-review-point-title small{font-size:10px;color:#82988a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ux-review-point-count{font-size:11px;font-weight:800;background:#e5f3e9;color:#33704c;border-radius:99px;padding:6px 9px}
+.ux-review-medium-list{padding:8px;display:grid;gap:6px;border-top:1px solid #e2eee5}
+.ux-review-medium{margin:0;min-height:64px}
+.ux-review-team-count{color:#478263!important}
+.ux-bulk-quick-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}
+.ux-bulk-quick-filters button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;border-radius:9px;border:1px solid #d6e6db;background:#fff;color:#346d4c;font-size:11px;font-weight:750;padding:9px 13px;cursor:pointer}
+.ux-bulk-quick-filters button:hover{background:#eff8f2}
+.ux-bulk-quick-filters button.is-active{background:#e3f3e8;border-color:#a8d8b9}
+.ux-bulk-quick-filters button:focus-visible{outline:3px solid #9dd5b2;outline-offset:2px}
+@media(max-width:620px){
+.ux-review-groups{padding:9px}
+.ux-review-point-heading{padding:10px;min-height:50px}
+.ux-review-medium-list{padding:6px}
+.ux-bulk-quick-filters button{flex:1 1 auto}
+}
