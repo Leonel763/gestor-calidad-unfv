@@ -2210,3 +2210,29 @@
   .bulk-dialog .bulk-unified-expand .bulk-standard-info strong{font-size:11px}
   .bulk-dialog .bulk-unified-medium-row{min-height:51px}
 }
+
+
+/* Seguridad documental: papelera reversible y no aplicabilidad administrada. */
+.safe-trash-description{font-size:12px;color:#657f6d;line-height:1.65;margin:0 0 13px}
+.safe-trash-row{display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding:13px;border:1px solid #dce9e0;background:#fbfdfb;border-radius:10px;margin:8px 0}
+.safe-trash-row>svg{flex:0 0 auto;color:#218156}
+.safe-trash-row>span{flex:1;min-width:165px;display:grid;gap:4px}
+.safe-trash-row strong{overflow-wrap:anywhere;font-size:12px;color:#2a4f3b}
+.safe-trash-row small{font-size:11px;color:#819486}
+.safe-trash-row button{display:inline-flex;align-items:center;gap:7px;min-height:40px}
+.bulk-medium-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;justify-content:flex-end}
+.bulk-medium-actions .bulk-toggle{flex:0 0 auto}
+.bulk-official-button{border-radius:8px;padding:7px 8px;min-height:37px;background:#fff2e9;color:#956235;border:1px solid #ebd4bd;font-size:10px;font-weight:800}
+.bulk-official-button:hover:not(:disabled){background:#f8e8da}
+.bulk-official-editor{background:#fffaf2;border:1px solid #ecdac3;border-radius:10px;padding:12px;display:grid;gap:10px}
+.bulk-official-editor label{display:grid;gap:7px;color:#735935;font-size:11px;font-weight:800}
+.bulk-official-editor textarea{width:100%;min-height:72px;resize:vertical;border-radius:8px;padding:11px;border:1px solid #e3d6bc;background:#fff;color:#3f4f3d;font-size:12px;font-weight:400}
+.bulk-official-editor-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.bulk-official-editor-actions button{min-height:40px;border-radius:8px;padding:9px 13px;background:#fff;border:1px solid #d9c9b8;color:#635943;font-size:11px;font-weight:800}
+.bulk-official-editor-actions button:last-child{background:#167b51;color:#fff;border-color:#167b51}
+.bulk-official-editor-actions button:disabled{opacity:.52;cursor:default}
+@media(max-width:640px){
+  .bulk-unified-medium-row{flex-wrap:wrap}
+  .bulk-medium-actions{flex-basis:100%;justify-content:flex-end}
+  .safe-trash-row button{flex:1}
+}
