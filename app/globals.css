@@ -2313,3 +2313,15 @@
 .ux-status-link{min-height:48px}
 }
 @media(prefers-reduced-motion:reduce){.ux-status-link,.ux-media-actions summary svg{transition:none}}
+
+
+/* Revisión simplificada: controles visibles sin duplicar estados. */
+.ux-review-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:11px 15px;border-bottom:1px solid #e1ebe4;background:#fbfdfb}
+.ux-review-tools label{display:flex;align-items:center;gap:8px;flex:1 1 200px;min-width:0;border:1px solid #d8e7de;border-radius:9px;padding:0 11px;background:#fff;color:#5a8067}
+.ux-review-tools input{min-width:0;width:100%;height:39px;border:0;outline:0;background:transparent;color:#294e36;font-size:12px}
+.ux-review-tools label:focus-within{outline:2px solid #7bcb9a;outline-offset:1px}
+.ux-review-tools>button{min-height:40px;border:1px solid #d8e7df;border-radius:9px;background:#fff;color:#35664a;padding:8px 11px;font-size:11px;font-weight:800;cursor:pointer}
+.ux-review-tools>button.is-active{background:#e4f4e9;border-color:#98d0ac}
+.ux-review-tools>button:focus-visible{outline:3px solid #9cceb0;outline-offset:2px}
+.ux-review-tools>span{font-size:11px;color:#789081;white-space:nowrap}
+@media(max-width:560px){.ux-review-tools label{flex-basis:100%}.ux-review-tools>span{margin-left:auto}}
