@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {Check, CheckCheck, CheckCircle2, ClipboardCheck, Save, X} from 'lucide-react';
+import {Check, CheckCheck, CheckCircle2, ClipboardCheck, Save, Search, X} from 'lucide-react';
 
 type ReviewPoint = {id:string; criterion:string};
 
@@ -21,6 +21,8 @@ type Props = {
 export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSave,onClose,saving,hasLegacy,teamReviews,currentUserId}:Props){
   const allowedIds=useMemo(()=>new Set(points.map(point=>point.id)),[points]);
   const [checked,setChecked]=useState<string[]>(()=>savedIds.filter(id=>allowedIds.has(id)));
+  const [search,setSearch]=useState('');
+  const [showUnreviewed,setShowUnreviewed]=useState(false);
   const cancelRef=useRef<HTMLButtonElement>(null);
   const dialogRef=useRef<HTMLDivElement>(null);
   const onCloseRef=useRef(onClose);
@@ -57,6 +59,10 @@ export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSa
   const percent=total>0?Math.round(count/total*100):0;
   const status=count===0?'Sin revisar':count===total?'Revisado completo':'En revisión';
   const statusClass=count===0?'empty':count===total?'done':'partial';
+  const initial=useMemo(()=>[...savedIds].filter(id=>allowedIds.has(id)).sort().join('|'),[savedIds,allowedIds]);
+  const changed=[...checked].sort().join('|')!==initial;
+  const normalizedSearch=search.trim().toLocaleLowerCase('es');
+  const filteredPoints=points.filter(p=>(!showUnreviewed||!checked.includes(p.id))&&(!normalizedSearch||`${p.id} ${p.criterion}`.toLocaleLowerCase('es').includes(normalizedSearch)));
 
   function toggle(id:string){
     setChecked(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]);
@@ -86,8 +92,13 @@ export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSa
           <span className="point-review-percent"><strong>{percent}%</strong><small>Mi avance</small></span>
         </div>
 
+        <div className="ux-review-tools">
+          <label><Search size={16} aria-hidden="true"/><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar punto o criterio" aria-label="Buscar puntos para revisar"/></label>
+          <button type="button" aria-pressed={showUnreviewed} className={showUnreviewed?'is-active':''} onClick={()=>setShowUnreviewed(v=>!v)}>{showUnreviewed?'Mostrar todos':'Solo sin revisar'}</button>
+          <span role="status">{filteredPoints.length} de {total} puntos</span>
+        </div>
         <div className="point-review-scroll">
-          {points.length>0 ? points.map(p=>(
+          {filteredPoints.length>0 ? filteredPoints.map(p=>(
             <label className={'point-review-choice'+(checked.includes(p.id)?' is-checked':'')} key={p.id}>
               <input type="checkbox" checked={checked.includes(p.id)} disabled={saving} onChange={()=>toggle(p.id)}/>
               <span className="point-review-custom-check" aria-hidden="true">{checked.includes(p.id)&&<Check size={17}/>}</span>
@@ -97,7 +108,7 @@ export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSa
               </span>
             </label>
           )):(
-            <p className="point-review-empty">Este estándar no tiene puntos activos para revisar.</p>
+            <p className="point-review-empty">{points.length?'Ningún punto coincide. Limpia la búsqueda o cambia el filtro.':'Este estándar no tiene puntos activos para revisar.'}</p>
           )}
           <details className="point-review-team-panel">
             <summary>
@@ -122,13 +133,13 @@ export function PointReviewDialog({standardId,standardTitle,points,savedIds,onSa
         </div>
 
         <div className="point-review-footer">
-          <p className="point-review-footnote">{hasLegacy ? 'Hay marcas anteriores guardadas en este navegador. Pulsa Guardar para sincronizarlas con tu cuenta. ' : ''}Tus revisiones se guardarán por cuenta en Supabase y podrán consultarse desde otros dispositivos. No modifican evidencias ni aprobaciones institucionales.</p>
+          <p className="point-review-footnote">{changed?'Tienes cambios pendientes de guardar. ':''}{hasLegacy ? 'Hay marcas anteriores guardadas en este navegador. Pulsa Guardar para sincronizarlas con tu cuenta. ' : ''}Tus revisiones se guardarán por cuenta en Supabase y podrán consultarse desde otros dispositivos. No modifican evidencias ni aprobaciones institucionales.</p>
           <div className="point-review-buttons">
             <button ref={cancelRef} className="point-review-cancel" type="button" onClick={onClose} disabled={saving}>Cancelar</button>
             <button className="point-review-all" type="button" disabled={!total || saving} onClick={toggleAll}>
               <CheckCheck size={18}/>{count===total?'Desmarcar todo':'Marcar todo'}
             </button>
-            <button className="point-review-save" type="button" onClick={()=>onSave(checked)} disabled={!total || saving}>
+            <button className="point-review-save" type="button" onClick={()=>onSave(checked)} disabled={!total || saving || (!changed && !hasLegacy)}>
               <Save size={17}/> {saving?'Guardando…':'Guardar revisión'}
             </button>
           </div>
