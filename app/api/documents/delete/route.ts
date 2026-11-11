@@ -29,10 +29,10 @@ export async function POST(request: Request) {
   if (identityError || !user) return failure('La sesión no es válida. Ingresa nuevamente.', 401);
 
   const { data: profile, error: profileError } = await sb.from('profiles')
-    .select('approved,role').eq('id', user.id).maybeSingle();
+    .select('approved,role,full_name').eq('id', user.id).maybeSingle();
   if (profileError || !profile?.approved) return failure('Cuenta no autorizada.', 403);
 
-  let payload: { id?: string };
+  let payload: { id?: string; action?: 'trash'|'restore' };
   try { payload = await request.json(); }
   catch { return failure('Solicitud inválida.', 400); }
   if (!payload.id || !/^[a-f0-9-]{36}$/i.test(payload.id))
@@ -46,11 +46,20 @@ export async function POST(request: Request) {
   if (profile.role !== 'admin' && document.uploaded_by !== user.id)
     return failure('Solo el autor o un administrador puede eliminar el documento.', 403);
 
-  const { error: storageError } = await sb.storage.from('evidencias').remove([document.file_path]);
-  if (storageError) return failure('No se pudo eliminar el archivo: ' + storageError.message, 500);
+  // Solo borrado lógico. NUNCA se elimina el objeto de Storage ni el registro.
+  if (payload.action === 'restore') {
+    const {data,error}=await sb.from('evidence_trash')
+      .delete().eq('evidence_id',document.id).select('evidence_id');
+    if (error) return failure('No se pudo recuperar el documento: '+error.message,500);
+    if (!data?.length) return failure('Este documento no estaba en la papelera.',404);
+    return NextResponse.json({ok:true,action:'restored'},{headers:{'Cache-Control':'no-store'}});
+  }
+  const {error:trashError}=await sb.from('evidence_trash').insert({
+    evidence_id:document.id,
+    trashed_by:user.id,
+    trashed_by_name:profile.full_name,
+  });
+  if (trashError) return failure('No se pudo mover a la papelera: '+trashError.message,500);
+  return NextResponse.json({ok:true,action:'trashed'},{headers:{'Cache-Control':'no-store'}});
 
-  const { error: dbError } = await sb.from('evidencias').delete().eq('id', document.id);
-  if (dbError) return failure('El archivo fue eliminado, pero no su registro. Contacta al administrador.', 500);
-
-  return NextResponse.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
 }
