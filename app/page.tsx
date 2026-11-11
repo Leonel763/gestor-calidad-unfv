@@ -192,6 +192,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [hiddenStandards, setHiddenStandards] = useState<number[]>([]);
   const [excludedMedia, setExcludedMedia] = useState<string[]>([]);
   const [reviewedPointsByStandard, setReviewedPointsByStandard] = useState<Record<string,string[]>>({});
+  const [migratedReviews, setMigratedReviews] = useState<number[]>([]);
   const [pointReviewOpen,setPointReviewOpen] = useState(false);
   const [bulkTab, setBulkTab] = useState<'manage' | 'download' | null>(null);
   const [quickUpload, setQuickUpload] = useState(false);
@@ -243,6 +244,14 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const hiddenStandardsKey = 'unfv-hidden-standards-preview:v1:' + identity.id;
   const excludedMediaKey = 'unfv-excluded-media-preview:v1:' + identity.id;
   const reviewedPointsKey = 'unfv-point-reviews-preview:v1:' + identity.id;
+  const migratedReviewsKey = 'unfv-point-reviews-migrated:v1:' + identity.id;
+
+  useEffect(()=>{
+    try{
+      const raw:unknown=JSON.parse(window.localStorage.getItem(migratedReviewsKey)||'[]');
+      if(Array.isArray(raw))setMigratedReviews(raw.filter((id):id is number=>typeof id==='number' && standards.some(st=>st.id===id)));
+    }catch{setMigratedReviews([]);}
+  },[migratedReviewsKey]);
 
   useEffect(() => {
     try {
@@ -303,7 +312,10 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       }
       await refresh();
       setPointReviewOpen(false);
-      // Mantener el respaldo local de las marcas anteriores, sin tocar las de otras cuentas.
+      // A partir de este guardado, la fuente de verdad de este estándar es Supabase.
+      const migrated=[...new Set([...migratedReviews,standardId])];
+      setMigratedReviews(migrated);
+      try{window.localStorage.setItem(migratedReviewsKey,JSON.stringify(migrated));}catch{}
       const next={...reviewedPointsByStandard,[String(standardId)]:desired};
       setReviewedPointsByStandard(next);
       try{window.localStorage.setItem(reviewedPointsKey,JSON.stringify(next));}catch{}
@@ -565,6 +577,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   };
   const validReviewCount=(id:number)=>reviewsFor(id).filter((review)=>review.status==='revisado' && !reviewOutdated(review)).length;
 
+  const stateWithoutEvidence=tracking.filter(row=>row.status==='completo' && !documents.some(doc=>doc.point_id===row.point_id));
   const complete = activeRecords.filter(a => getStatus(a.id) === 'completo').length;
   const simulated = activeRecords.filter(a => getStatus(a.id) === 'en_proceso').length;
   const need = activeRecords.filter(a => getStatus(a.id) === 'complementar').length;
@@ -600,8 +613,9 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const activeReviewPointIds=new Set(activeReviewPoints.map(pt=>pt.id));
   const syncedPointReview=pointReviews.filter(row=>row.standard_id===selectedStandard.id && row.reviewer_id===identity.id).map(row=>row.point_id);
   const legacyReview=reviewedPointsByStandard[String(selectedStandard.id)]||[];
-  const savedPointReview=[...new Set([...syncedPointReview,...legacyReview])].filter(id=>activeReviewPointIds.has(id));
-  const unsyncedLegacyReview=legacyReview.some(id=>!syncedPointReview.includes(id));
+  const isMigrated=migratedReviews.includes(selectedStandard.id);
+  const savedPointReview=(isMigrated?syncedPointReview:[...new Set([...syncedPointReview,...legacyReview])]).filter(id=>activeReviewPointIds.has(id));
+  const unsyncedLegacyReview=!isMigrated && legacyReview.some(id=>!syncedPointReview.includes(id));
   const activeReviewedCount=savedPointReview.filter(id=>activeReviewPointIds.has(id)).length;
 
   const filteredMatrixItems = useMemo(() => {
@@ -1381,6 +1395,7 @@ setBusy(false);
                       <div className="home-v2-progress-line" aria-hidden="true">
                         <span style={{ width: `${generalPercent}%` }} />
                       </div>
+                      <p className="quality-progress-note">Avance documental según evidencias cargadas y su estado. No representa aprobación o conformidad institucional.</p>
                       <div className="home-v2-progress-totals">
                         <span><Layers3 size={16}/><b>{visibleStandards.length}</b><small>Estándares</small></span>
                         <span><ClipboardList size={16}/><b>{allPoints}</b><small>Puntos</small></span>
@@ -1394,6 +1409,9 @@ setBusy(false);
                   <div className="home-v2-section-heading">
                     <h2>Estado de medios de logro</h2>
                   </div>
+                  {stateWithoutEvidence.length>0 && <button type="button" className="quality-consistency-warning" onClick={()=>{setSection('pendientes');setStatusFilter('pendiente');setQuery('');}}>
+                    <CircleAlert size={16}/> Hay {stateWithoutEvidence.length} estados completos sin archivos adjuntos. Revisar medios pendientes.
+                  </button>}
                   <div className="home-v2-status-list">
                     {([
                       { key: 'complete', label: 'Completos', value: complete },
@@ -1515,6 +1533,7 @@ setBusy(false);
                   <button type="button" className="bulk-toolbar-primary" onClick={() => setBulkTab('download')}><Download size={16}/> Descargar ZIP</button>
                 </div>
               </div>
+              <p className="quality-progress-note">El porcentaje corresponde a evidencias documentales y excluye los medios oficialmente «No aplica»; no equivale a una validación de conformidad.</p>
               <div className="tri-overview-bar">
                 <div><Layers3 size={19}/><strong>{visibleStandards.length}</strong><span>Visibles</span></div>
                 <div><ClipboardList size={19}/><strong>{allPoints}</strong><span>Puntos</span></div>
