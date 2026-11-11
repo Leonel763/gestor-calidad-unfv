@@ -2187,6 +2187,8 @@ setBusy(false);
           onClose={()=>{if(!pointReviewSaving)setPointReviewOpen(false);}}
           saving={pointReviewSaving}
           hasLegacy={unsyncedLegacyReview}
+          teamReviews={pointReviews.filter(row=>row.standard_id===selectedStandard.id)}
+          currentUserId={identity.id}
         />
       )}
       {bulkTab && (
