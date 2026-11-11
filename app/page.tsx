@@ -219,6 +219,8 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [alert, setAlert] = useState<Notice | null>(null);
   const alertTimer = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{done:number;total:number}|null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadStatus, setUploadStatus] = useState<Exclude<Status, 'pendiente'> | ''>('');
   const [uploader, setUploader] = useState(identity.full_name);
@@ -692,6 +694,13 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     return [...docEvents, ...trackingEvents].slice(0, 4);
   }, [documents, tracking]);
 
+  function openStatusResults(status:Status) {
+    resetFilters();
+    setStatusFilter(status);
+    setSection('pendientes');
+    setItem(null);
+  }
+
   function resetFilters() {
     setExplorerStatus('todos');
     setQuery('');
@@ -880,9 +889,10 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       }
     }
     setBusy(true);
+    setUploadProgress(files.length?{done:0,total:files.length}:null);
     dismissAlert();
     try {
-    for (const file of files) {
+    for (const [fileIndex,file] of files.entries()) {
       const safeName = file.name
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -914,6 +924,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
         setBusy(false);
         return;
       }
+      setUploadProgress({done:fileIndex+1,total:files.length});
     }
     const { error: statusError } = await sb
   .from('seguimiento')
@@ -1430,7 +1441,7 @@ setBusy(false);
                             <ChevronRight size={15}/>
                           </button>
                         ))}
-                        <small>No se cambiará ningún estado sin una revisión humana.</small>
+                        <small>Los medios sin archivos se muestran como pendientes. Si aún ves una inconsistencia, actualiza para sincronizar.</small>
                       </div>
                     </details>
                   )}
@@ -1441,11 +1452,11 @@ setBusy(false);
                       { key: 'needs', label: 'Por complementar', value: need },
                       { key: 'pending', label: 'Pendientes', value: pending },
                     ] as const).map((entry) => (
-                      <div key={entry.key} className="home-v2-status-row">
+                      <button key={entry.key} type="button" className="home-v2-status-row ux-status-link" onClick={()=>openStatusResults(entry.key==="complete"?"completo":entry.key==="simulated"?"en_proceso":entry.key==="needs"?"complementar":"pendiente")} aria-label={`Ver ${entry.value} medios: ${entry.label}`}>
                         <span className={`home-v2-status-dot ${entry.key}`} aria-hidden="true" />
                         <span>{entry.label}</span>
                         <strong>{entry.value}</strong>
-                      </div>
+                      <ChevronRight size={15} aria-hidden="true"/></button>
                     ))}
                   </div>
                 </section>
@@ -1622,6 +1633,7 @@ setBusy(false);
                   </details>
                 </aside>
                   </details>
+                  <p className="ux-search-context" role="status">{filteredMatrixItems.length} medios coinciden con los filtros actuales.</p>
                   <div className="tri-standard-list">
                     {visibleStandards.filter((st) => {
                       const summary = groupSummary(st.points.flatMap((pt) => pt.items));
@@ -1744,14 +1756,7 @@ setBusy(false);
                                     </button>
                                     <span className={'quiet-status-badge status-' + getStatus(it.id)}>{STATUS_META[getStatus(it.id)].name}</span>
                                     <span className="tri-media-files"><Paperclip size={14}/>{getDocs(it.id).length}</span>
-                                    <button type="button" className="tri-media-upload" onClick={() => openQuickUploadFor(it.id)}
-                                      aria-label={'Cargar documento en el medio ' + it.id}>
-                                      <Upload size={15}/> Cargar documento
-                                    </button>
-                                    <button type="button" className="tri-media-detail" onClick={() => openItem(it.id)}
-                                      aria-label={'Ver ficha del medio ' + it.id}>
-                                      Ver ficha <ChevronRight size={15}/>
-                                    </button>
+                                    <details className="ux-media-actions"><summary aria-label={"Acciones del medio "+it.id}>Acciones <ChevronRight size={15}/></summary><div><button type="button" onClick={()=>openItem(it.id)}><Eye size={15}/> Ver ficha</button><button type="button" onClick={()=>openQuickUploadFor(it.id)}><Upload size={15}/> Cargar documento</button></div></details>
                                   </div>
                                 ))}
                               </div>
@@ -1790,6 +1795,7 @@ setBusy(false);
     </nav>
 
     {/* Cabecera compacta: lo esencial primero y el detalle bajo demanda. */}
+    <nav className="ux-detail-jump" aria-label="Secciones del medio"><button type="button" onClick={()=>document.getElementById("documentos-del-medio")?.scrollIntoView({behavior:"smooth",block:"start"})}><FileText size={15}/> Documentos</button><button type="button" onClick={()=>document.getElementById("carga-evidencia")?.scrollIntoView({behavior:"smooth",block:"start"})}><Upload size={15}/> Agregar evidencia</button><button type="button" onClick={()=>setShowRequirements(true)}><BookOpen size={15}/> Requisitos</button></nav>
     <div className="evidence-heading evidence-heading-refined">
       <div className="evidence-hero">
         <div className="evidence-hero-icon"><FileText size={27} aria-hidden="true" /></div>
@@ -1838,10 +1844,11 @@ setBusy(false);
         )}
 
         <label
-          className="evidence-dropzone evidence-dropzone-refined"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
+          className={"evidence-dropzone evidence-dropzone-refined"+(dragActive?" is-dragging":"")}
+          onDragOver={(e) => {e.preventDefault();if(!busy)setDragActive(true);}}
+           onDragLeave={()=>setDragActive(false)}
+           onDrop={(e) => {
+             e.preventDefault();setDragActive(false);
             if (!sb || busy) return;
             setFiles(Array.from(e.dataTransfer.files));
           }}
@@ -1869,6 +1876,8 @@ setBusy(false);
             }
           />
         </label>
+         {files.length>0 && <div className="ux-upload-selection" aria-live="polite"><strong>{files.length} archivo(s) preparado(s)</strong>{files.map((file,index)=><div key={file.name+"-"+file.lastModified+"-"+index}><span title={file.name}><FileText size={15}/>{file.name} <small>({formatBytes(file.size)})</small></span><button type="button" disabled={busy} aria-label={"Quitar "+file.name} onClick={()=>setFiles(old=>old.filter((_,i)=>i!==index))}><X size={15}/></button></div>)}</div>}
+
 
         <div className="evidence-form-grid">
           <div className="evidence-field">
@@ -1889,6 +1898,8 @@ setBusy(false);
             />
           </div>
         </div>
+         {busy && uploadProgress && <div className="ux-upload-progress" role="status" aria-live="polite"><span>Documentos registrados: {uploadProgress.done} de {uploadProgress.total}</span><progress max={uploadProgress.total} value={uploadProgress.done}/><small>Avanza al guardarse cada archivo; no mide la transferencia.</small></div>}
+
 
         <div className="evidence-form-footer">
           <div className="evidence-field">
@@ -1947,7 +1958,7 @@ setBusy(false);
     </div>
 
     {/* DOCUMENTOS ADJUNTOS */}
-    <div className="evidence-card evidence-documents">
+    <div className="evidence-card evidence-documents" id="documentos-del-medio">
       <div className="evidence-documents-heading">
         <div>
           <h2>
@@ -2142,7 +2153,7 @@ setBusy(false);
           {section === 'pendientes' && !selected && (
             <>
               <div className="toolbar toolbar-extended">
-                <div className="search"><Search size={17} /><input placeholder="Buscar pendientes por código o requisito" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+                <span className="ux-search-context">Busca por código, descripción o documento desde la barra superior.</span>
                 <div className="select-wrap"><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'todos' | Status)}><option value="todos">Todos los estados</option>{Object.entries(STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.name}</option>)}</select></div>
                 <div className="select-wrap"><select value={existenceFilter} onChange={(e) => setExistenceFilter(e.target.value as 'todos' | Existence)}>{EXISTENCE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
               </div>
