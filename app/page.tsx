@@ -1417,9 +1417,23 @@ setBusy(false);
                   <div className="home-v2-section-heading">
                     <h2>Estado de medios de logro</h2>
                   </div>
-                  {stateWithoutEvidence.length>0 && <button type="button" className="quality-consistency-warning" onClick={()=>{setSection('pendientes');setStatusFilter('pendiente');setQuery('');}}>
-                    <CircleAlert size={16}/> Hay {stateWithoutEvidence.length} estados completos sin archivos adjuntos. Revisar medios pendientes.
-                  </button>}
+                  {stateWithoutEvidence.length>0 && (
+                    <details className="quality-consistency-panel">
+                      <summary><CircleAlert size={16}/> {stateWithoutEvidence.length} estados marcados completos sin archivos · Revisar detalles</summary>
+                      <div>
+                        {stateWithoutEvidence.map(row=>(
+                          <button key={row.point_id} type="button"
+                            disabled={!browsableRecords.some(item=>item.id===row.point_id)}
+                            onClick={()=>{resetFilters();openItem(row.point_id);}}>
+                            <strong>Medio {row.point_id}</strong>
+                            <span>Estado registrado: Completo · Evidencia actual: sin documentos</span>
+                            <ChevronRight size={15}/>
+                          </button>
+                        ))}
+                        <small>No se cambiará ningún estado sin una revisión humana.</small>
+                      </div>
+                    </details>
+                  )}
                   <div className="home-v2-status-list">
                     {([
                       { key: 'complete', label: 'Completos', value: complete },
