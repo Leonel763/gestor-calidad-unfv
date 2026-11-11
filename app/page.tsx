@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import {
+import { RotateCcw,
   ArrowLeft,
   CircleAlert,
   BookOpen,
@@ -41,6 +41,7 @@ import {PointReviewDialog} from './point-review-dialog';
 import {OfficePreview} from './office-preview';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
+import {checkFileSignature} from '../lib/file-validation';
 
 type Item = {
   id: string;
@@ -192,6 +193,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [hiddenStandards, setHiddenStandards] = useState<number[]>([]);
   const [excludedMedia, setExcludedMedia] = useState<string[]>([]);
   const [reviewedPointsByStandard, setReviewedPointsByStandard] = useState<Record<string,string[]>>({});
+  const [migratedReviews, setMigratedReviews] = useState<number[]>([]);
   const [pointReviewOpen,setPointReviewOpen] = useState(false);
   const [bulkTab, setBulkTab] = useState<'manage' | 'download' | null>(null);
   const [quickUpload, setQuickUpload] = useState(false);
@@ -209,6 +211,11 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [pendingReviewId, setPendingReviewId] = useState<number|null>(null);
   const [reviewConfirmError, setReviewConfirmError] = useState('');
   const [documents, setDocuments] = useState<Evidence[]>([]);
+  const [trashedDocuments, setTrashedDocuments] = useState<Evidence[]>([]);
+  const [showTrash, setShowTrash] = useState(false);
+  const [pointReviews, setPointReviews] = useState<Array<{point_id:string;standard_id:number;reviewer_id:string;reviewer_name:string;reviewed_at:string}>>([]);
+  const [institutionalExclusions, setInstitutionalExclusions] = useState<Array<{point_id:string;reason:string;excluded_by_name:string;excluded_at:string}>>([]);
+  const [pointReviewSaving, setPointReviewSaving] = useState(false);
   const [alert, setAlert] = useState<Notice | null>(null);
   const alertTimer = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -238,6 +245,14 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const hiddenStandardsKey = 'unfv-hidden-standards-preview:v1:' + identity.id;
   const excludedMediaKey = 'unfv-excluded-media-preview:v1:' + identity.id;
   const reviewedPointsKey = 'unfv-point-reviews-preview:v1:' + identity.id;
+  const migratedReviewsKey = 'unfv-point-reviews-migrated:v1:' + identity.id;
+
+  useEffect(()=>{
+    try{
+      const raw:unknown=JSON.parse(window.localStorage.getItem(migratedReviewsKey)||'[]');
+      if(Array.isArray(raw))setMigratedReviews(raw.filter((id):id is number=>typeof id==='number' && standards.some(st=>st.id===id)));
+    }catch{setMigratedReviews([]);}
+  },[migratedReviewsKey]);
 
   useEffect(() => {
     try {
@@ -275,18 +290,57 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     } catch { setReviewedPointsByStandard({}); }
   },[reviewedPointsKey]);
 
-  function savePointReview(standardId:number,checkedIds:string[]){
-    const active=new Set(standards.find(st=>st.id===standardId)?.points.map(pt=>pt.id)||[]);
-    const clean=[...new Set(checkedIds)].filter(id=>active.has(id));
-    const next={...reviewedPointsByStandard,[String(standardId)]:clean};
+  async function savePointReview(standardId:number,checkedIds:string[]){
+    if(!sb || !identity.approved || pointReviewSaving) return;
+    const allowed=new Set(standards.find(st=>st.id===standardId)?.points.map(pt=>pt.id)||[]);
+    const desired=[...new Set(checkedIds)].filter(id=>allowed.has(id));
+    const existing=pointReviews.filter(r=>r.standard_id===standardId && r.reviewer_id===identity.id).map(r=>r.point_id);
+    const additions=desired.filter(id=>!existing.includes(id));
+    const removals=existing.filter(id=>!desired.includes(id));
+    setPointReviewSaving(true);
     try {
-      window.localStorage.setItem(reviewedPointsKey,JSON.stringify(next));
-      setReviewedPointsByStandard(next);
+      if(additions.length){
+        const {error}=await sb.from('point_reviews').upsert(
+          additions.map(point_id=>({point_id,standard_id:standardId,reviewer_id:identity.id,reviewer_name:identity.full_name})),
+          {onConflict:'point_id,reviewer_id'}
+        );
+        if(error)throw error;
+      }
+      if(removals.length){
+        const {error}=await sb.from('point_reviews').delete()
+          .eq('reviewer_id',identity.id).eq('standard_id',standardId).in('point_id',removals);
+        if(error)throw error;
+      }
+      await refresh();
       setPointReviewOpen(false);
-      showAlert('Tu revisión por puntos se guardó en este navegador.','success');
-    } catch {
-      showAlert('El navegador bloqueó el guardado. Intenta habilitar el almacenamiento local.');
+      // A partir de este guardado, la fuente de verdad de este estándar es Supabase.
+      const migrated=[...new Set([...migratedReviews,standardId])];
+      setMigratedReviews(migrated);
+      try{window.localStorage.setItem(migratedReviewsKey,JSON.stringify(migrated));}catch{}
+      const next={...reviewedPointsByStandard,[String(standardId)]:desired};
+      setReviewedPointsByStandard(next);
+      try{window.localStorage.setItem(reviewedPointsKey,JSON.stringify(next));}catch{}
+      showAlert('Tu revisión se sincronizó con Supabase.','success');
+    }catch(reason){
+      showAlert('No se guardó toda la revisión: '+(reason instanceof Error?reason.message:'error inesperado'));
+      await refresh();
+    }finally{setPointReviewSaving(false);}
+  }
+
+  async function changeInstitutionalExclusion(pointId:string,reason:string|null){
+    if(!sb || identity.role!=='admin' || !identity.approved)throw new Error('Se requiere una cuenta administradora autorizada.');
+    if(!all.some(row=>row.id===pointId))throw new Error('Medio de logro desconocido.');
+    if(reason!==null){
+      if(reason.trim().length<10 || reason.trim().length>500)throw new Error('Escribe una justificación de 10 a 500 caracteres.');
+      const {error}=await sb.from('media_exclusions').upsert({
+        point_id:pointId,reason:reason.trim(),excluded_by:identity.id,excluded_by_name:identity.full_name
+      },{onConflict:'point_id'});
+      if(error)throw error;
+    }else{
+      const {error}=await sb.from('media_exclusions').delete().eq('point_id',pointId);
+      if(error)throw error;
     }
+    await refresh();
   }
 
   function changeExcludedMedia(next:string[]) {
@@ -433,20 +487,32 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
 
   const refresh = async () => {
     if (!sb || !identity.approved) return;
-    const [docsRes, trackingRes, commentRes, reviewsRes] = await Promise.all([
+    const [docsRes, trackingRes, commentRes, reviewsRes, pointReviewsRes, excludedRes, trashRes] = await Promise.all([
       sb.from('evidencias').select('*').order('created_at', { ascending: false }),
       sb.from('seguimiento').select('*'),
       sb.from('document_comments').select('evidence_id,comment_type,status'),
       sb.from('standard_reviews').select('standard_id,status,reviewed_by,reviewer_name,reviewed_at'),
+      sb.from('point_reviews').select('point_id,standard_id,reviewer_id,reviewer_name,reviewed_at'),
+      sb.from('media_exclusions').select('point_id,reason,excluded_by_name,excluded_at'),
+      sb.from('evidence_trash').select('evidence_id'),
     ]);
-    if (docsRes.error) showAlert(`No se pudo consultar la biblioteca: ${docsRes.error.message}`);
-    else setDocuments((docsRes.data || []) as Evidence[]);
+    if (docsRes.error || trashRes.error) showAlert('No se pudo consultar la biblioteca o papelera: '+(docsRes.error?.message || trashRes.error?.message));
+    else {
+      const allFiles=(docsRes.data || []) as Evidence[];
+      const trashIds=new Set((trashRes.data || []).map(row=>row.evidence_id));
+      setDocuments(allFiles.filter(doc=>!trashIds.has(doc.id)));
+      setTrashedDocuments(allFiles.filter(doc=>trashIds.has(doc.id)));
+    }
     if (trackingRes.error) showAlert(`No se pudo consultar el seguimiento: ${trackingRes.error.message}`);
     else setTracking((trackingRes.data || []) as Tracking[]);
     if (commentRes.error) showAlert(`No se pudieron consultar las observaciones: ${commentRes.error.message}`);
     else setCommentBriefs((commentRes.data || []) as DocumentCommentBrief[]);
     if (reviewsRes.error) showAlert('No se pudieron consultar las revisiones: ' + reviewsRes.error.message);
     else setStandardReviews((reviewsRes.data || []) as StandardReview[]);
+    if(pointReviewsRes.error) showAlert('No se pudieron consultar revisiones por punto: '+pointReviewsRes.error.message);
+    else setPointReviews(pointReviewsRes.data || []);
+    if(excludedRes.error) showAlert('No se pudieron consultar los medios no aplicables: '+excludedRes.error.message);
+    else setInstitutionalExclusions(excludedRes.data || []);
   };
 
   useEffect(() => {
@@ -462,6 +528,9 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'seguimiento' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'document_comments' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'standard_reviews' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'point_reviews' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'media_exclusions' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'evidence_trash' }, reload)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') reload();
       });
@@ -492,10 +561,13 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   return tracking.find((t) => t.point_id === id)?.status || 'pendiente';
 };
   const getDocs = (id: string) => documents.filter((d) => d.point_id === id);
-  const isExcluded = (id:string) => excludedMedia.includes(id);
-  const groupSummary = (items: Item[]) => summarizeStatuses(items.filter(it => !isExcluded(it.id)).map(it => getStatus(it.id)));
+  // Ocultar: preferencia de navegación local. "No aplica": decisión institucional que afecta el progreso compartido.
+  const isOfficiallyExcluded=(id:string)=>institutionalExclusions.some(item=>item.point_id===id);
+  const isExcluded = (id:string) => excludedMedia.includes(id) || isOfficiallyExcluded(id);
+  const groupSummary = (items: Item[]) => summarizeStatuses(items.filter(it => !isOfficiallyExcluded(it.id)).map(it => getStatus(it.id)));
   const visibleStandards = standards.filter(st => !hiddenStandards.includes(st.id));
-  const activeRecords = all.filter(a => !hiddenStandards.includes(a.standard) && !isExcluded(a.id));
+  const activeRecords = all.filter(a => !isOfficiallyExcluded(a.id));
+  const browsableRecords = activeRecords.filter(a=>!hiddenStandards.includes(a.standard) && !excludedMedia.includes(a.id));
   const reviewsFor=(id:number)=>standardReviews.filter((review)=>review.standard_id===id);
   const myReviewFor=(id:number)=>standardReviews.find((review)=>review.standard_id===id && review.reviewed_by===identity.id);
   const reviewOutdated=(review:StandardReview)=>{
@@ -506,11 +578,12 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   };
   const validReviewCount=(id:number)=>reviewsFor(id).filter((review)=>review.status==='revisado' && !reviewOutdated(review)).length;
 
+  const stateWithoutEvidence=tracking.filter(row=>row.status==='completo' && !documents.some(doc=>doc.point_id===row.point_id));
   const complete = activeRecords.filter(a => getStatus(a.id) === 'completo').length;
   const simulated = activeRecords.filter(a => getStatus(a.id) === 'en_proceso').length;
   const need = activeRecords.filter(a => getStatus(a.id) === 'complementar').length;
   const pending = activeRecords.filter(a => getStatus(a.id) === 'pendiente').length;
-  const allPoints = visibleStandards.reduce((sum, st) => sum + st.points.filter(pt => pt.items.some(it => !isExcluded(it.id))).length, 0);
+  const allPoints = standards.reduce((sum, st) => sum + st.points.filter(pt => pt.items.some(it => !isOfficiallyExcluded(it.id))).length, 0);
   const numberedSubpoints = activeRecords.filter(a => a.id.split('.').length === 3).length;
   const generalPercent = activeRecords.length ? Math.round(complete / activeRecords.length * 100) : 0;
   const selectedStandard = visibleStandards.find((s) => s.id === standard) || visibleStandards[0] || standards[0];
@@ -533,17 +606,21 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       )
     : quickMediaOptions;
   const selectedQuickMedia = quickMediaOptions.find((option) => option.id === quickMedium);
-  const selected = activeRecords.find((a) => a.id === item) || null;
+  const selected = browsableRecords.find((a) => a.id === item) || null;
   const selectedStandardSummary = groupSummary(selectedStandard.points.flatMap((pt) => pt.items));
   const activeReviewPoints = selectedStandard.points
-    .filter(pt => pt.items.some(it => !isExcluded(it.id)))
+    .filter(pt => pt.items.some(it => !isOfficiallyExcluded(it.id)))
     .map(pt => ({id:pt.id,criterion:pt.criterion}));
   const activeReviewPointIds=new Set(activeReviewPoints.map(pt=>pt.id));
-  const savedPointReview=reviewedPointsByStandard[String(selectedStandard.id)]||[];
+  const syncedPointReview=pointReviews.filter(row=>row.standard_id===selectedStandard.id && row.reviewer_id===identity.id).map(row=>row.point_id);
+  const legacyReview=reviewedPointsByStandard[String(selectedStandard.id)]||[];
+  const isMigrated=migratedReviews.includes(selectedStandard.id);
+  const savedPointReview=(isMigrated?syncedPointReview:[...new Set([...syncedPointReview,...legacyReview])]).filter(id=>activeReviewPointIds.has(id));
+  const unsyncedLegacyReview=!isMigrated && legacyReview.some(id=>!syncedPointReview.includes(id));
   const activeReviewedCount=savedPointReview.filter(id=>activeReviewPointIds.has(id)).length;
 
   const filteredMatrixItems = useMemo(() => {
-    return activeRecords.filter((record) => {
+    return browsableRecords.filter((record) => {
       const haystack = [
         record.id,
         record.text,
@@ -564,7 +641,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       if (typeFilter !== 'Todos' && normalizeType(record.type) !== typeFilter) return false;
       return true;
     });
-  }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents, excludedMedia, hiddenStandards]);
+  }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents, excludedMedia, hiddenStandards, institutionalExclusions]);
 
   // Datos filtrados para la vista compacta; no alteran las evidencias de Supabase.
   const filteredIds = new Set(filteredMatrixItems.map((record) => record.id));
@@ -706,7 +783,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   }
 
   function openQuickUploadFor(code: string) {
-    const record = activeRecords.find((row) => row.id === code);
+    const record = browsableRecords.find((row) => row.id === code);
     if (!record || busy) return;
     setStandard(record.standard);
     setQuickMedium(record.id);
@@ -794,6 +871,13 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     if (invalid) {
       showAlert(`Archivo no válido: ${invalid.name}. Admite PDF, Word, Excel e imágenes hasta 15 MB.`);
       return;
+    }
+    for(const file of files){
+      const issue=await checkFileSignature(file);
+      if(issue){
+        showAlert(`El archivo ${file.name} no es válido. ${issue}`);
+        return;
+      }
     }
     setBusy(true);
     dismissAlert();
@@ -916,29 +1000,31 @@ setBusy(false);
     link.remove();
   }
 
-  async function deleteDocument() {
-    if (!deleteTarget || deleting) return;
+  async function changeDocumentTrash(doc:Evidence,action:'trash'|'restore'){
+    if(deleting)return;
     setDeleting(true);
     dismissAlert();
-    try {
-      if(!sb) throw new Error('Debes iniciar sesión para eliminar.');
+    try{
+      if(!sb)throw new Error('Debes iniciar sesión.');
       const {data:{session}}=await sb.auth.getSession();
-      if(!session?.access_token) throw new Error('Sesión expirada. Vuelve a ingresar.');
-      const response = await fetch('/api/documents/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
-        body: JSON.stringify({ id: deleteTarget.id }),
+      if(!session?.access_token)throw new Error('Sesión expirada. Vuelve a ingresar.');
+      const response=await fetch('/api/documents/delete',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},
+        body:JSON.stringify({id:doc.id,action})
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'No se pudo eliminar el documento');
-      setDeleteTarget(null);
-      showAlert('Documento eliminado correctamente.', 'success');
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error || 'No se pudo completar la operación.');
+      if(action==='trash')setDeleteTarget(null);
       await refresh();
-    } catch (error) {
-      showAlert(error instanceof Error ? error.message : 'No se pudo eliminar el documento');
-    } finally {
-      setDeleting(false);
-    }
+      showAlert(action==='trash'?'Documento enviado a la papelera. Puedes recuperarlo.':'Documento restaurado.','success');
+    }catch(reason){showAlert(reason instanceof Error?reason.message:'Error al actualizar la papelera.');}
+    finally{setDeleting(false);}
+  }
+
+  async function deleteDocument() {
+    if(!deleteTarget)return;
+    await changeDocumentTrash(deleteTarget,'trash');
   }
 
   const title = selected
@@ -1317,6 +1403,7 @@ setBusy(false);
                       <div className="home-v2-progress-line" aria-hidden="true">
                         <span style={{ width: `${generalPercent}%` }} />
                       </div>
+                      <p className="quality-progress-note">Avance documental según evidencias cargadas y su estado. No representa aprobación o conformidad institucional.</p>
                       <div className="home-v2-progress-totals">
                         <span><Layers3 size={16}/><b>{visibleStandards.length}</b><small>Estándares</small></span>
                         <span><ClipboardList size={16}/><b>{allPoints}</b><small>Puntos</small></span>
@@ -1330,6 +1417,23 @@ setBusy(false);
                   <div className="home-v2-section-heading">
                     <h2>Estado de medios de logro</h2>
                   </div>
+                  {stateWithoutEvidence.length>0 && (
+                    <details className="quality-consistency-panel">
+                      <summary><CircleAlert size={16}/> {stateWithoutEvidence.length} estados marcados completos sin archivos · Revisar detalles</summary>
+                      <div>
+                        {stateWithoutEvidence.map(row=>(
+                          <button key={row.point_id} type="button"
+                            disabled={!browsableRecords.some(item=>item.id===row.point_id)}
+                            onClick={()=>{resetFilters();openItem(row.point_id);}}>
+                            <strong>Medio {row.point_id}</strong>
+                            <span>Estado registrado: Completo · Evidencia actual: sin documentos</span>
+                            <ChevronRight size={15}/>
+                          </button>
+                        ))}
+                        <small>No se cambiará ningún estado sin una revisión humana.</small>
+                      </div>
+                    </details>
+                  )}
                   <div className="home-v2-status-list">
                     {([
                       { key: 'complete', label: 'Completos', value: complete },
@@ -1451,6 +1555,7 @@ setBusy(false);
                   <button type="button" className="bulk-toolbar-primary" onClick={() => setBulkTab('download')}><Download size={16}/> Descargar ZIP</button>
                 </div>
               </div>
+              <p className="quality-progress-note">El porcentaje corresponde a evidencias documentales y excluye los medios oficialmente «No aplica»; no equivale a una validación de conformidad.</p>
               <div className="tri-overview-bar">
                 <div><Layers3 size={19}/><strong>{visibleStandards.length}</strong><span>Visibles</span></div>
                 <div><ClipboardList size={19}/><strong>{allPoints}</strong><span>Puntos</span></div>
@@ -1959,10 +2064,35 @@ setBusy(false);
               </div>
 
               <div className="library-summary-bar">
-                <span className="filter-pill active">{libraryRows.length} documentos</span>
+                <span className="filter-pill active">{showTrash ? trashedDocuments.length : libraryRows.length} documentos</span>
+                <button type="button" className="tiny-button" onClick={()=>{setShowTrash(v=>!v);setLibraryPage(1);}}>
+                  {showTrash ? 'Ver biblioteca' : 'Papelera ('+trashedDocuments.length+')'}
+                </button>
                 <button className="tiny-button" onClick={resetFilters}>Limpiar filtros</button>
               </div>
 
+              {showTrash ? (
+                <div className="list-panel padded">
+                  <div className="section-inline">
+                    <h2>Papelera de documentos</h2>
+                    <span className="soft-count">{trashedDocuments.length} archivos recuperables</span>
+                  </div>
+                  <p className="safe-trash-description">Los documentos originales siguen guardados en Supabase. Solo el autor o un administrador puede restaurarlos.</p>
+                  {trashedDocuments.map(doc=>(
+                    <div className="safe-trash-row" key={doc.id}>
+                      <FileText size={20}/>
+                      <span><strong>{doc.file_name}</strong><small>Medio {doc.point_id} · {doc.uploader}</small></span>
+                      <button type="button" className="tiny-button" disabled={deleting}
+                        onClick={()=>void downloadDoc(doc)}><Download size={15}/> Descargar</button>
+                      {(identity.role==='admin'||doc.uploaded_by===identity.id) && (
+                        <button type="button" className="tiny-button" disabled={deleting}
+                          onClick={()=>void changeDocumentTrash(doc,'restore')}><RotateCcw size={15}/> Restaurar</button>
+                      )}
+                    </div>
+                  ))}
+                  {!trashedDocuments.length && <div className="empty"><Trash2 size={25}/><strong>La papelera está vacía</strong><span>No se ha ocultado ningún documento.</span></div>}
+                </div>
+              ) : (
               <div className="list-panel padded">
                 <div className="section-inline">
                   <h2>Documentos cargados</h2>
@@ -1989,7 +2119,7 @@ setBusy(false);
                         {commentCounts(doc.id)>0&&<span className={pendingComments(doc.id)>0?'feedback-count is-pending':'feedback-count'} title={pendingComments(doc.id)>0?'Hay solicitudes de corrección pendientes':'Comentarios registrados'}>{commentCounts(doc.id)}</span>}
                       </button>
                       <button className="document-action" type="button" onClick={() => void downloadDoc(doc)} title="Descargar" aria-label={`Descargar ${doc.file_name}`}><Download size={16} /></button>
-                      {(identity.role === 'admin' || doc.uploaded_by === identity.id) && <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Eliminar documento" aria-label={`Eliminar ${doc.file_name}`}><Trash2 size={16} /></button>}
+                      {(identity.role === 'admin' || doc.uploaded_by === identity.id) && <button className="delete-document" type="button" onClick={() => setDeleteTarget(doc)} title="Mover a la papelera" aria-label={`Enviar a papelera ${doc.file_name}`}><Trash2 size={16} /></button>}
                     </div>
                   </div>
                 ))}
@@ -2005,6 +2135,7 @@ setBusy(false);
                   </nav>
                 )}
               </div>
+              )}
             </>
           )}
 
@@ -2066,8 +2197,12 @@ setBusy(false);
           standardTitle={selectedStandard.title}
           points={activeReviewPoints}
           savedIds={savedPointReview}
-          onSave={ids=>savePointReview(selectedStandard.id,ids)}
-          onClose={()=>setPointReviewOpen(false)}
+          onSave={ids=>void savePointReview(selectedStandard.id,ids)}
+          onClose={()=>{if(!pointReviewSaving)setPointReviewOpen(false);}}
+          saving={pointReviewSaving}
+          hasLegacy={unsyncedLegacyReview}
+          teamReviews={pointReviews.filter(row=>row.standard_id===selectedStandard.id)}
+          currentUserId={identity.id}
         />
       )}
       {bulkTab && (
@@ -2078,6 +2213,9 @@ setBusy(false);
           onHiddenIdsChange={changeHiddenStandards}
           excludedMedia={excludedMedia}
           onExcludedMediaChange={changeExcludedMedia}
+          officialExclusions={institutionalExclusions}
+          onOfficialChanged={changeInstitutionalExclusion}
+          isAdmin={identity.role==='admin'}
           onClose={() => setBulkTab(null)}
           initialTab={bulkTab}
           client={sb}
@@ -2131,11 +2269,11 @@ setBusy(false);
         <div className="modal-overlay" onMouseDown={(e) => { if (e.currentTarget === e.target && !deleting) setDeleteTarget(null); }} role="presentation">
           <section role="dialog" aria-modal="true" aria-labelledby="delete-title" className="delete-dialog">
             <div className="delete-dialog-icon"><Trash2 size={21} /></div>
-            <h2 id="delete-title">¿Eliminar este documento?</h2>
-            <p><strong>{deleteTarget.file_name}</strong> desaparecerá de la biblioteca y se borrará del almacenamiento de Supabase. Esta acción no se puede deshacer.</p>
+            <h2 id="delete-title">¿Mover a la papelera?</h2>
+            <p><strong>{deleteTarget.file_name}</strong> dejará de aparecer en la biblioteca y en el seguimiento, pero el archivo original permanecerá guardado en Supabase y podrás restaurarlo.</p>
             <div className="modal-actions">
               <button type="button" className="cancel-delete" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancelar</button>
-              <button type="button" className="confirm-delete" disabled={deleting} onClick={deleteDocument}>{deleting ? 'Eliminando...' : 'Sí, eliminar'}</button>
+              <button type="button" className="confirm-delete" disabled={deleting} onClick={deleteDocument}>{deleting ? 'Moviendo…' : 'Mover a papelera'}</button>
             </div>
           </section>
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {Fragment,useEffect, useMemo, useRef, useState} from 'react';
 import type {SupabaseClient} from '@supabase/supabase-js';
 import type {Evidence} from '../lib/supabase';
 import {
@@ -25,6 +25,9 @@ type Props = {
   onHiddenIdsChange: (ids: number[]) => void;
   excludedMedia: string[];
   onExcludedMediaChange: (ids: string[]) => void;
+  officialExclusions: {point_id:string;reason:string;excluded_by_name:string;excluded_at:string}[];
+  onOfficialChanged: (id:string, reason:string|null)=>Promise<void>;
+  isAdmin:boolean;
   onClose: () => void;
   initialTab: DialogTab;
   client: SupabaseClient | null;
@@ -58,7 +61,8 @@ function prettyBytes(bytes: number) {
 }
 
 export function StandardBulkWorkspace({
-  standards, documents, hiddenIds, onHiddenIdsChange, excludedMedia, onExcludedMediaChange, onClose, initialTab, client,
+  standards, documents, hiddenIds, onHiddenIdsChange, excludedMedia, onExcludedMediaChange,
+  officialExclusions, onOfficialChanged, isAdmin, onClose, initialTab, client,
 }: Props) {
   const [tab, setTab] = useState<DialogTab>(initialTab);
   const [selectedIds, setSelectedIds] = useState<number[]>(
@@ -68,6 +72,9 @@ export function StandardBulkWorkspace({
   const [mediumSearch,setMediumSearch] = useState('');
   const [mediumStandard,setMediumStandard] = useState('todos');
   const [expandedStandards,setExpandedStandards] = useState<number[]>([]);
+  const [officialEditing,setOfficialEditing] = useState<string|null>(null);
+  const [officialReason,setOfficialReason] = useState('');
+  const [officialBusy,setOfficialBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
@@ -177,6 +184,19 @@ export function StandardBulkWorkspace({
     if(busy)return;
     setError('');
     onExcludedMediaChange(excludedMedia.includes(id)?excludedMedia.filter(row=>row!==id):[...excludedMedia,id]);
+  }
+
+  async function applyOfficial(id:string, reason:string|null){
+    if(!isAdmin || officialBusy)return;
+    setOfficialBusy(true);
+    setError('');
+    try{
+      await onOfficialChanged(id,reason);
+      setOfficialEditing(null);
+      setOfficialReason('');
+    }catch(err){
+      setError(err instanceof Error?err.message:'No se pudo guardar la exclusión.');
+    }finally{setOfficialBusy(false);}
   }
 
   function toggleSelection(id: number) {
@@ -302,13 +322,13 @@ export function StandardBulkWorkspace({
             <>
               <div className="bulk-info"><Info size={17}/>
                 <div><strong>Organiza estándares y medios desde un mismo lugar.</strong>
-                  <p>Ocultar un estándar o excluir un medio lo retira del seguimiento de esta vista. Puedes restaurarlo cuando quieras; los documentos adjuntos no se eliminan.</p>
+                  <p>Ocultar es una preferencia visual personal y no altera el avance oficial. Solo «No aplica», con autorización y motivo, excluye medios del porcentaje compartido. Ninguna acción borra archivos.</p>
                 </div>
               </div>
 
               <div className="bulk-section-top">
                 <strong>Estándares y medios de logro</strong>
-                <span>{hiddenIds.length} estándares ocultos · {excludedMedia.length} medios excluidos</span>
+                <span>{hiddenIds.length} estándares ocultos para ti · {excludedMedia.length} medios ocultos para ti · {officialExclusions.length} no aplicables</span>
               </div>
               <div className="bulk-media-filters">
                 <input value={mediumSearch} onChange={event=>setMediumSearch(event.target.value)}
@@ -329,7 +349,7 @@ export function StandardBulkWorkspace({
                 {organizedStandards.map(({st,matchingMedia})=>{
                   const isHidden=hiddenIds.includes(st.id);
                   const fileCount=docCountByStandard.get(st.id)||0;
-                  const excludedCount=st.points.flatMap(pt=>pt.items).filter(item=>excludedMedia.includes(item.id)).length;
+                  const excludedCount=st.points.flatMap(pt=>pt.items).filter(item=>officialExclusions.some(row=>row.point_id===item.id)).length;
                   const expanded=Boolean(mediumSearch.trim()) || expandedStandards.includes(st.id);
                   return (
                     <section className={'bulk-unified-standard'+(isHidden?' is-hidden':'')} key={st.id}>
@@ -343,7 +363,7 @@ export function StandardBulkWorkspace({
                           <span className="bulk-standard-code">E{String(st.id).padStart(2,'0')}</span>
                           <span className="bulk-standard-info">
                             <strong>{st.title}</strong>
-                            <small>{st.points.flatMap(pt=>pt.items).length} medios · {fileCount} archivos{excludedCount>0?' · '+excludedCount+' excluidos':''}</small>
+                            <small>{st.points.flatMap(pt=>pt.items).length} medios · {fileCount} archivos{excludedCount>0?' · '+excludedCount+' no aplicables':''}</small>
                           </span>
                         </button>
                         <button type="button" className={'bulk-toggle'+(isHidden?' restore':'')}
@@ -358,20 +378,47 @@ export function StandardBulkWorkspace({
                           <div className="bulk-unified-media-label">MEDIOS DEL ESTÁNDAR E{st.id}</div>
                           {matchingMedia.map(medium=>{
                             const excluded=excludedMedia.includes(medium.id);
+                            const official=officialExclusions.find(entry=>entry.point_id===medium.id);
                             const files=docCountByMedium.get(medium.id)||0;
                             return (
-                              <div key={medium.id} className={'bulk-unified-medium-row'+(excluded?' is-excluded':'')}>
+                              <Fragment key={medium.id}>
+                              <div className={'bulk-unified-medium-row'+(excluded?' is-excluded':'')}>
                                 <span className="bulk-medium-code">{medium.id}</span>
                                 <span className="bulk-medium-desc">
                                   <strong>Medio {medium.id}</strong>
-                                  <small>{files} {files===1?'archivo conservado':'archivos conservados'} · {excluded?'Fuera del seguimiento':'Incluido en el seguimiento'}</small>
+                                  <small>{files} {files===1?'archivo conservado':'archivos conservados'} · {official?'No aplica al avance oficial':excluded?'Oculto solo para ti':'Incluido en el avance'}</small>
+                                  {official && <small title={official.reason}>Motivo: {official.reason} · {official.excluded_by_name}</small>}
                                 </span>
-                                <button type="button" className={'bulk-toggle'+(excluded?' restore':'')}
-                                  disabled={busy} onClick={()=>toggleMedium(medium.id)}>
-                                  {excluded?<ArchiveRestore size={15}/>:<EyeOff size={15}/>}
-                                  {excluded?'Restaurar':'Excluir'}
-                                </button>
+                                <div className="bulk-medium-actions">
+                                  <button type="button" className={'bulk-toggle'+(excluded?' restore':'')}
+                                    disabled={busy || officialBusy} onClick={()=>toggleMedium(medium.id)}>
+                                    {excluded?<ArchiveRestore size={15}/>:<EyeOff size={15}/>}
+                                    {excluded?'Mostrar':'Ocultar'}
+                                  </button>
+                                  {isAdmin && <button type="button" className="bulk-official-button" disabled={busy || officialBusy}
+                                    onClick={()=>{
+                                      if(official) void applyOfficial(medium.id,null);
+                                      else{setOfficialEditing(medium.id);setOfficialReason('');}
+                                    }}>{official?'Restaurar avance':'No aplica'}</button>}
+                                </div>
                               </div>
+                              {officialEditing===medium.id && isAdmin && (
+                                <div className="bulk-official-editor">
+                                  <label>Justificación para no aplicar el medio {medium.id}
+                                    <textarea rows={2} minLength={10} maxLength={500} value={officialReason}
+                                      placeholder="Explica por qué este medio no corresponde al seguimiento institucional."
+                                      onChange={event=>setOfficialReason(event.target.value)}/>
+                                  </label>
+                                  <div className="bulk-official-editor-actions">
+                                    <button type="button" disabled={officialBusy} onClick={()=>setOfficialEditing(null)}>Cancelar</button>
+                                    <button type="button" disabled={officialBusy || officialReason.trim().length<10}
+                                      onClick={()=>void applyOfficial(medium.id,officialReason)}>
+                                      {officialBusy?'Guardando…':'Confirmar no aplica'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                              </Fragment>
                             );
                           })}
                         </div>
@@ -387,7 +434,7 @@ export function StandardBulkWorkspace({
                   </div>
                 )}
               </div>
-              <p className="bulk-manage-footnote">Las exclusiones son reversibles y se guardan por cuenta en este navegador. Los archivos siguen disponibles en Biblioteca y en las descargas.</p>
+              <p className="bulk-manage-footnote">Las preferencias de ocultamiento se guardan en tu navegador. Los medios «No aplica» se registran con motivo para todo el equipo y pueden ser restaurados por un administrador. Los documentos permanecen intactos.</p>
             </>
           ) : (
             <>
@@ -447,7 +494,7 @@ export function StandardBulkWorkspace({
         </div>
 
         <footer className="bulk-footer">
-          <span>{tab === 'download' ? 'Los archivos originales permanecen intactos.' : 'Las exclusiones son reversibles y se guardan solo en este navegador.'}</span>
+          <span>{tab === 'download' ? 'Los archivos originales permanecen intactos.' : 'Ocultar es personal; «No aplica» modifica el avance común con justificación.'}</span>
           <button type="button" className="bulk-cancel" disabled={busy} onClick={onClose}>Cerrar</button>
           {tab === 'download' && (
             <button type="button" className="bulk-download" disabled={busy || documentsToExport.length===0}

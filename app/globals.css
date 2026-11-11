@@ -2210,3 +2210,62 @@
   .bulk-dialog .bulk-unified-expand .bulk-standard-info strong{font-size:11px}
   .bulk-dialog .bulk-unified-medium-row{min-height:51px}
 }
+
+
+/* Seguridad documental: papelera reversible y no aplicabilidad administrada. */
+.safe-trash-description{font-size:12px;color:#657f6d;line-height:1.65;margin:0 0 13px}
+.safe-trash-row{display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding:13px;border:1px solid #dce9e0;background:#fbfdfb;border-radius:10px;margin:8px 0}
+.safe-trash-row>svg{flex:0 0 auto;color:#218156}
+.safe-trash-row>span{flex:1;min-width:165px;display:grid;gap:4px}
+.safe-trash-row strong{overflow-wrap:anywhere;font-size:12px;color:#2a4f3b}
+.safe-trash-row small{font-size:11px;color:#819486}
+.safe-trash-row button{display:inline-flex;align-items:center;gap:7px;min-height:40px}
+.bulk-medium-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;justify-content:flex-end}
+.bulk-medium-actions .bulk-toggle{flex:0 0 auto}
+.bulk-official-button{border-radius:8px;padding:7px 8px;min-height:37px;background:#fff2e9;color:#956235;border:1px solid #ebd4bd;font-size:10px;font-weight:800}
+.bulk-official-button:hover:not(:disabled){background:#f8e8da}
+.bulk-official-editor{background:#fffaf2;border:1px solid #ecdac3;border-radius:10px;padding:12px;display:grid;gap:10px}
+.bulk-official-editor label{display:grid;gap:7px;color:#735935;font-size:11px;font-weight:800}
+.bulk-official-editor textarea{width:100%;min-height:72px;resize:vertical;border-radius:8px;padding:11px;border:1px solid #e3d6bc;background:#fff;color:#3f4f3d;font-size:12px;font-weight:400}
+.bulk-official-editor-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.bulk-official-editor-actions button{min-height:40px;border-radius:8px;padding:9px 13px;background:#fff;border:1px solid #d9c9b8;color:#635943;font-size:11px;font-weight:800}
+.bulk-official-editor-actions button:last-child{background:#167b51;color:#fff;border-color:#167b51}
+.bulk-official-editor-actions button:disabled{opacity:.52;cursor:default}
+@media(max-width:640px){
+  .bulk-unified-medium-row{flex-wrap:wrap}
+  .bulk-medium-actions{flex-basis:100%;justify-content:flex-end}
+  .safe-trash-row button{flex:1}
+}
+
+
+/* Claridad del indicador: evidencia documental no equivale a aprobación. */
+.quality-progress-note{font-size:11px;line-height:1.65;color:#6c8976;margin:9px 0 10px;padding:10px 12px;border-radius:9px;background:#f2f8f4;border:1px solid #e0ede4}
+.quality-consistency-warning{display:flex;gap:8px;align-items:center;width:100%;text-align:left;padding:10px 11px;border:1px solid #ead2b3;border-radius:9px;background:#fff8e9;color:#986a30;font-size:11px;line-height:1.5;font-weight:700;margin:8px 0}
+.quality-consistency-warning:hover{background:#fdf0d7}
+.quality-consistency-warning:focus-visible{outline:3px solid #dfc090;outline-offset:2px}
+.quality-consistency-warning svg{flex:0 0 auto}
+
+
+/* Auditoría de revisiones visible bajo demanda, sin recargar la ficha del estándar. */
+.point-review-team-panel{margin-top:8px;border:1px solid #e1ece3;border-radius:10px;background:#f8fbf8;overflow:hidden}
+.point-review-team-panel summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;cursor:pointer;color:#316247;font-size:11px;font-weight:800;list-style:none}
+.point-review-team-panel summary::-webkit-details-marker{display:none}
+.point-review-team-panel summary span:last-child{border-radius:99px;background:#e5f2e9;color:#548068;padding:4px 8px;font-size:10px}
+.point-review-team-panel summary:focus-visible{outline:3px solid #a6d8b8;outline-offset:-3px}
+.point-review-team-content{padding:7px 13px 13px;border-top:1px solid #e3ede6;display:grid;gap:9px}
+.point-review-team-content>p{margin:0;font-size:11px;color:#7d9385}
+.point-review-team-point{display:flex;flex-direction:column;gap:5px}
+.point-review-team-point strong{font-size:11px;color:#315a41}
+.point-review-team-point small{font-size:10px;color:#809486}
+
+
+.quality-consistency-panel{border:1px solid #ead5b6;background:#fff9ee;border-radius:9px;margin:9px 0;overflow:hidden}
+.quality-consistency-panel summary{display:flex;align-items:center;gap:8px;list-style:none;padding:11px 13px;color:#946127;font-size:12px;font-weight:800;cursor:pointer}
+.quality-consistency-panel summary::-webkit-details-marker{display:none}
+.quality-consistency-panel summary:focus-visible{outline:3px solid #e7c592;outline-offset:-3px}
+.quality-consistency-panel>div{display:grid;gap:4px;padding:8px 11px 12px;border-top:1px solid #f0e1c7}
+.quality-consistency-panel>div>button{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap;text-align:left;padding:10px 11px;border:1px solid #f0e2cf;border-radius:8px;background:#fff;color:#635338}
+.quality-consistency-panel button strong{font-size:11px}
+.quality-consistency-panel button span{font-size:10px;flex:1;min-width:180px;color:#947b53}
+.quality-consistency-panel button:disabled{opacity:.55;cursor:default}
+.quality-consistency-panel>div>small{color:#8f7957;font-size:10px;margin-top:5px}
