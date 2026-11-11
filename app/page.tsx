@@ -41,6 +41,7 @@ import {PointReviewDialog} from './point-review-dialog';
 import {OfficePreview} from './office-preview';
 import matrix from '../lib/matriz.json';
 import { client, type Evidence, type Tracking } from '../lib/supabase';
+import {checkFileSignature} from '../lib/file-validation';
 
 type Item = {
   id: string;
@@ -870,6 +871,13 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     if (invalid) {
       showAlert(`Archivo no válido: ${invalid.name}. Admite PDF, Word, Excel e imágenes hasta 15 MB.`);
       return;
+    }
+    for(const file of files){
+      const issue=await checkFileSignature(file);
+      if(issue){
+        showAlert(`El archivo ${file.name} no es válido. ${issue}`);
+        return;
+      }
     }
     setBusy(true);
     dismissAlert();
