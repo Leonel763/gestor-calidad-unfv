@@ -294,9 +294,17 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
 
   async function savePointReview(standardId:number,checkedIds:string[]){
     if(!sb || !identity.approved || pointReviewSaving) return;
-    const allowed=new Set(standards.find(st=>st.id===standardId)?.points.map(pt=>pt.id)||[]);
-    const desired=[...new Set(checkedIds)].filter(id=>allowed.has(id));
+    const standardToReview=standards.find(st=>st.id===standardId);
+    const allowed=new Set(standardToReview?.points.map(pt=>pt.id)||[]);
+    // Los puntos sin medios visibles quedan fuera de la revisión de esta cuenta.
+    // Sus marcas previas se conservan incluso cuando se guardan otros puntos.
+    const visible=new Set(standardToReview?.points.filter(pt=>
+      pt.items.some(it=>!excludedMedia.includes(it.id) && !institutionalExclusions.some(ex=>ex.point_id===it.id))
+    ).map(pt=>pt.id)||[]);
     const existing=pointReviews.filter(r=>r.standard_id===standardId && r.reviewer_id===identity.id).map(r=>r.point_id);
+    const hiddenPreviouslyReviewed=[...new Set([...existing,...(reviewedPointsByStandard[String(standardId)]||[])])]
+      .filter(id=>allowed.has(id) && !visible.has(id));
+    const desired=[...new Set([...checkedIds.filter(id=>allowed.has(id) && visible.has(id)),...hiddenPreviouslyReviewed])];
     const additions=desired.filter(id=>!existing.includes(id));
     const removals=existing.filter(id=>!desired.includes(id));
     setPointReviewSaving(true);
@@ -610,8 +618,10 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const selectedQuickMedia = quickMediaOptions.find((option) => option.id === quickMedium);
   const selected = browsableRecords.find((a) => a.id === item) || null;
   const selectedStandardSummary = groupSummary(selectedStandard.points.flatMap((pt) => pt.items));
+  // Revisión: solo puntos con al menos un medio actualmente visible.
+  // Ocultar es una preferencia de la cuenta; no borra revisiones anteriores.
   const activeReviewPoints = selectedStandard.points
-    .filter(pt => pt.items.some(it => !isOfficiallyExcluded(it.id)))
+    .filter(pt => pt.items.some(it => !isExcluded(it.id)))
     .map(pt => ({id:pt.id,criterion:pt.criterion}));
   const activeReviewPointIds=new Set(activeReviewPoints.map(pt=>pt.id));
   const syncedPointReview=pointReviews.filter(row=>row.standard_id===selectedStandard.id && row.reviewer_id===identity.id).map(row=>row.point_id);
