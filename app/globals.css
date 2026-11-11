@@ -2325,3 +2325,23 @@
 .ux-review-tools>button:focus-visible{outline:3px solid #9cceb0;outline-offset:2px}
 .ux-review-tools>span{font-size:11px;color:#789081;white-space:nowrap}
 @media(max-width:560px){.ux-review-tools label{flex-basis:100%}.ux-review-tools>span{margin-left:auto}}
+
+
+/* Corrección: el desplegable de medios no debe recortarse por overflow:hidden.
+   Solo se habilita el desbordamiento mientras el menú está abierto. */
+.tri-point:has(.ux-media-actions[open]){
+  position:relative;
+  z-index:25;
+  overflow:visible;
+}
+.tri-point:has(.ux-media-actions[open]) .tri-media-list{
+  overflow:visible;
+}
+.tri-point:has(.ux-media-actions[open]) .tri-media-item{
+  position:relative;
+}
+.tri-point:has(.ux-media-actions[open]) .tri-media-item:has(.ux-media-actions[open]){
+  z-index:26;
+}
+.ux-media-actions[open]{z-index:27}
+.ux-media-actions[open]>div{z-index:28}
