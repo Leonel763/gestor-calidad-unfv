@@ -2257,3 +2257,15 @@
 .point-review-team-point{display:flex;flex-direction:column;gap:5px}
 .point-review-team-point strong{font-size:11px;color:#315a41}
 .point-review-team-point small{font-size:10px;color:#809486}
+
+
+.quality-consistency-panel{border:1px solid #ead5b6;background:#fff9ee;border-radius:9px;margin:9px 0;overflow:hidden}
+.quality-consistency-panel summary{display:flex;align-items:center;gap:8px;list-style:none;padding:11px 13px;color:#946127;font-size:12px;font-weight:800;cursor:pointer}
+.quality-consistency-panel summary::-webkit-details-marker{display:none}
+.quality-consistency-panel summary:focus-visible{outline:3px solid #e7c592;outline-offset:-3px}
+.quality-consistency-panel>div{display:grid;gap:4px;padding:8px 11px 12px;border-top:1px solid #f0e1c7}
+.quality-consistency-panel>div>button{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap;text-align:left;padding:10px 11px;border:1px solid #f0e2cf;border-radius:8px;background:#fff;color:#635338}
+.quality-consistency-panel button strong{font-size:11px}
+.quality-consistency-panel button span{font-size:10px;flex:1;min-width:180px;color:#947b53}
+.quality-consistency-panel button:disabled{opacity:.55;cursor:default}
+.quality-consistency-panel>div>small{color:#8f7957;font-size:10px;margin-top:5px}
