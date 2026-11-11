@@ -209,6 +209,11 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [pendingReviewId, setPendingReviewId] = useState<number|null>(null);
   const [reviewConfirmError, setReviewConfirmError] = useState('');
   const [documents, setDocuments] = useState<Evidence[]>([]);
+  const [trashedDocuments, setTrashedDocuments] = useState<Evidence[]>([]);
+  const [showTrash, setShowTrash] = useState(false);
+  const [pointReviews, setPointReviews] = useState<Array<{point_id:string;standard_id:number;reviewer_id:string;reviewer_name:string;reviewed_at:string}>>([]);
+  const [institutionalExclusions, setInstitutionalExclusions] = useState<Array<{point_id:string;reason:string;excluded_by_name:string;excluded_at:string}>>([]);
+  const [pointReviewSaving, setPointReviewSaving] = useState(false);
   const [alert, setAlert] = useState<Notice | null>(null);
   const alertTimer = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -275,18 +280,54 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     } catch { setReviewedPointsByStandard({}); }
   },[reviewedPointsKey]);
 
-  function savePointReview(standardId:number,checkedIds:string[]){
-    const active=new Set(standards.find(st=>st.id===standardId)?.points.map(pt=>pt.id)||[]);
-    const clean=[...new Set(checkedIds)].filter(id=>active.has(id));
-    const next={...reviewedPointsByStandard,[String(standardId)]:clean};
+  async function savePointReview(standardId:number,checkedIds:string[]){
+    if(!sb || !identity.approved || pointReviewSaving) return;
+    const allowed=new Set(standards.find(st=>st.id===standardId)?.points.map(pt=>pt.id)||[]);
+    const desired=[...new Set(checkedIds)].filter(id=>allowed.has(id));
+    const existing=pointReviews.filter(r=>r.standard_id===standardId && r.reviewer_id===identity.id).map(r=>r.point_id);
+    const additions=desired.filter(id=>!existing.includes(id));
+    const removals=existing.filter(id=>!desired.includes(id));
+    setPointReviewSaving(true);
     try {
-      window.localStorage.setItem(reviewedPointsKey,JSON.stringify(next));
-      setReviewedPointsByStandard(next);
+      if(additions.length){
+        const {error}=await sb.from('point_reviews').upsert(
+          additions.map(point_id=>({point_id,standard_id:standardId,reviewer_id:identity.id,reviewer_name:identity.full_name})),
+          {onConflict:'point_id,reviewer_id'}
+        );
+        if(error)throw error;
+      }
+      if(removals.length){
+        const {error}=await sb.from('point_reviews').delete()
+          .eq('reviewer_id',identity.id).eq('standard_id',standardId).in('point_id',removals);
+        if(error)throw error;
+      }
+      await refresh();
       setPointReviewOpen(false);
-      showAlert('Tu revisión por puntos se guardó en este navegador.','success');
-    } catch {
-      showAlert('El navegador bloqueó el guardado. Intenta habilitar el almacenamiento local.');
+      // Mantener el respaldo local de las marcas anteriores, sin tocar las de otras cuentas.
+      const next={...reviewedPointsByStandard,[String(standardId)]:desired};
+      setReviewedPointsByStandard(next);
+      try{window.localStorage.setItem(reviewedPointsKey,JSON.stringify(next));}catch{}
+      showAlert('Tu revisión se sincronizó con Supabase.','success');
+    }catch(reason){
+      showAlert('No se guardó toda la revisión: '+(reason instanceof Error?reason.message:'error inesperado'));
+      await refresh();
+    }finally{setPointReviewSaving(false);}
+  }
+
+  async function changeInstitutionalExclusion(pointId:string,reason:string|null){
+    if(!sb || identity.role!=='admin' || !identity.approved)throw new Error('Se requiere una cuenta administradora autorizada.');
+    if(!all.some(row=>row.id===pointId))throw new Error('Medio de logro desconocido.');
+    if(reason!==null){
+      if(reason.trim().length<10 || reason.trim().length>500)throw new Error('Escribe una justificación de 10 a 500 caracteres.');
+      const {error}=await sb.from('media_exclusions').upsert({
+        point_id:pointId,reason:reason.trim(),excluded_by:identity.id,excluded_by_name:identity.full_name
+      },{onConflict:'point_id'});
+      if(error)throw error;
+    }else{
+      const {error}=await sb.from('media_exclusions').delete().eq('point_id',pointId);
+      if(error)throw error;
     }
+    await refresh();
   }
 
   function changeExcludedMedia(next:string[]) {
@@ -433,20 +474,32 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
 
   const refresh = async () => {
     if (!sb || !identity.approved) return;
-    const [docsRes, trackingRes, commentRes, reviewsRes] = await Promise.all([
+    const [docsRes, trackingRes, commentRes, reviewsRes, pointReviewsRes, excludedRes, trashRes] = await Promise.all([
       sb.from('evidencias').select('*').order('created_at', { ascending: false }),
       sb.from('seguimiento').select('*'),
       sb.from('document_comments').select('evidence_id,comment_type,status'),
       sb.from('standard_reviews').select('standard_id,status,reviewed_by,reviewer_name,reviewed_at'),
+      sb.from('point_reviews').select('point_id,standard_id,reviewer_id,reviewer_name,reviewed_at'),
+      sb.from('media_exclusions').select('point_id,reason,excluded_by_name,excluded_at'),
+      sb.from('evidence_trash').select('evidence_id'),
     ]);
-    if (docsRes.error) showAlert(`No se pudo consultar la biblioteca: ${docsRes.error.message}`);
-    else setDocuments((docsRes.data || []) as Evidence[]);
+    if (docsRes.error || trashRes.error) showAlert('No se pudo consultar la biblioteca o papelera: '+(docsRes.error?.message || trashRes.error?.message));
+    else {
+      const allFiles=(docsRes.data || []) as Evidence[];
+      const trashIds=new Set((trashRes.data || []).map(row=>row.evidence_id));
+      setDocuments(allFiles.filter(doc=>!trashIds.has(doc.id)));
+      setTrashedDocuments(allFiles.filter(doc=>trashIds.has(doc.id)));
+    }
     if (trackingRes.error) showAlert(`No se pudo consultar el seguimiento: ${trackingRes.error.message}`);
     else setTracking((trackingRes.data || []) as Tracking[]);
     if (commentRes.error) showAlert(`No se pudieron consultar las observaciones: ${commentRes.error.message}`);
     else setCommentBriefs((commentRes.data || []) as DocumentCommentBrief[]);
     if (reviewsRes.error) showAlert('No se pudieron consultar las revisiones: ' + reviewsRes.error.message);
     else setStandardReviews((reviewsRes.data || []) as StandardReview[]);
+    if(pointReviewsRes.error) showAlert('No se pudieron consultar revisiones por punto: '+pointReviewsRes.error.message);
+    else setPointReviews(pointReviewsRes.data || []);
+    if(excludedRes.error) showAlert('No se pudieron consultar los medios no aplicables: '+excludedRes.error.message);
+    else setInstitutionalExclusions(excludedRes.data || []);
   };
 
   useEffect(() => {
@@ -462,6 +515,9 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'seguimiento' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'document_comments' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'standard_reviews' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'point_reviews' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'media_exclusions' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'evidence_trash' }, reload)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') reload();
       });
