@@ -904,7 +904,8 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
         contentType: file.type || 'application/pdf',
       });
       if (uploadErr) {
-        showAlert(`Error al subir ${file.name}: ${uploadErr.message}`);
+        if(fileIndex>0){setFiles(files.slice(fileIndex));await refresh();}
+        showAlert((fileIndex>0?`${fileIndex} archivo(s) se guardaron antes del error. Solo quedan seleccionados los pendientes. `:'')+`Error al subir ${file.name}: ${uploadErr.message}`);
         setBusy(false);
         return;
       }
@@ -920,7 +921,8 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       });
       if (dbErr) {
         await sb.storage.from('evidencias').remove([path]);
-        showAlert(`Error al registrar ${file.name}: ${dbErr.message}`);
+        if(fileIndex>0){setFiles(files.slice(fileIndex));await refresh();}
+        showAlert((fileIndex>0?`${fileIndex} archivo(s) se guardaron antes del error. Solo quedan seleccionados los pendientes. `:'')+`Error al registrar ${file.name}: ${dbErr.message}`);
         setBusy(false);
         return;
       }
@@ -1318,6 +1320,7 @@ setBusy(false);
                   </div>
                 )}
 
+                {quickUploadStep==='attach' && busy && uploadProgress && <div className="ux-upload-progress" role="status" aria-live="polite"><span>Documentos registrados: {uploadProgress.done} de {uploadProgress.total}</span><progress max={uploadProgress.total} value={uploadProgress.done}/><small>Cada avance confirma que un documento fue guardado.</small></div>}
                 {quickUploadError && <div className="quick-upload-error" role="alert">
                   <CircleAlert size={16}/><span>{quickUploadError}</span>
                 </div>}
