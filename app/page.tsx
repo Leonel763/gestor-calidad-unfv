@@ -548,10 +548,13 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   return tracking.find((t) => t.point_id === id)?.status || 'pendiente';
 };
   const getDocs = (id: string) => documents.filter((d) => d.point_id === id);
-  const isExcluded = (id:string) => excludedMedia.includes(id);
-  const groupSummary = (items: Item[]) => summarizeStatuses(items.filter(it => !isExcluded(it.id)).map(it => getStatus(it.id)));
+  // Ocultar: preferencia de navegación local. "No aplica": decisión institucional que afecta el progreso compartido.
+  const isOfficiallyExcluded=(id:string)=>institutionalExclusions.some(item=>item.point_id===id);
+  const isExcluded = (id:string) => excludedMedia.includes(id) || isOfficiallyExcluded(id);
+  const groupSummary = (items: Item[]) => summarizeStatuses(items.filter(it => !isOfficiallyExcluded(it.id)).map(it => getStatus(it.id)));
   const visibleStandards = standards.filter(st => !hiddenStandards.includes(st.id));
-  const activeRecords = all.filter(a => !hiddenStandards.includes(a.standard) && !isExcluded(a.id));
+  const activeRecords = all.filter(a => !isOfficiallyExcluded(a.id));
+  const browsableRecords = activeRecords.filter(a=>!hiddenStandards.includes(a.standard) && !excludedMedia.includes(a.id));
   const reviewsFor=(id:number)=>standardReviews.filter((review)=>review.standard_id===id);
   const myReviewFor=(id:number)=>standardReviews.find((review)=>review.standard_id===id && review.reviewed_by===identity.id);
   const reviewOutdated=(review:StandardReview)=>{
@@ -566,7 +569,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const simulated = activeRecords.filter(a => getStatus(a.id) === 'en_proceso').length;
   const need = activeRecords.filter(a => getStatus(a.id) === 'complementar').length;
   const pending = activeRecords.filter(a => getStatus(a.id) === 'pendiente').length;
-  const allPoints = visibleStandards.reduce((sum, st) => sum + st.points.filter(pt => pt.items.some(it => !isExcluded(it.id))).length, 0);
+  const allPoints = standards.reduce((sum, st) => sum + st.points.filter(pt => pt.items.some(it => !isOfficiallyExcluded(it.id))).length, 0);
   const numberedSubpoints = activeRecords.filter(a => a.id.split('.').length === 3).length;
   const generalPercent = activeRecords.length ? Math.round(complete / activeRecords.length * 100) : 0;
   const selectedStandard = visibleStandards.find((s) => s.id === standard) || visibleStandards[0] || standards[0];
@@ -589,17 +592,20 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       )
     : quickMediaOptions;
   const selectedQuickMedia = quickMediaOptions.find((option) => option.id === quickMedium);
-  const selected = activeRecords.find((a) => a.id === item) || null;
+  const selected = browsableRecords.find((a) => a.id === item) || null;
   const selectedStandardSummary = groupSummary(selectedStandard.points.flatMap((pt) => pt.items));
   const activeReviewPoints = selectedStandard.points
-    .filter(pt => pt.items.some(it => !isExcluded(it.id)))
+    .filter(pt => pt.items.some(it => !isOfficiallyExcluded(it.id)))
     .map(pt => ({id:pt.id,criterion:pt.criterion}));
   const activeReviewPointIds=new Set(activeReviewPoints.map(pt=>pt.id));
-  const savedPointReview=reviewedPointsByStandard[String(selectedStandard.id)]||[];
+  const syncedPointReview=pointReviews.filter(row=>row.standard_id===selectedStandard.id && row.reviewer_id===identity.id).map(row=>row.point_id);
+  const legacyReview=reviewedPointsByStandard[String(selectedStandard.id)]||[];
+  const savedPointReview=[...new Set([...syncedPointReview,...legacyReview])].filter(id=>activeReviewPointIds.has(id));
+  const unsyncedLegacyReview=legacyReview.some(id=>!syncedPointReview.includes(id));
   const activeReviewedCount=savedPointReview.filter(id=>activeReviewPointIds.has(id)).length;
 
   const filteredMatrixItems = useMemo(() => {
-    return activeRecords.filter((record) => {
+    return browsableRecords.filter((record) => {
       const haystack = [
         record.id,
         record.text,
@@ -620,7 +626,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       if (typeFilter !== 'Todos' && normalizeType(record.type) !== typeFilter) return false;
       return true;
     });
-  }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents, excludedMedia, hiddenStandards]);
+  }, [query, statusFilter, existenceFilter, typeFilter, tracking, documents, excludedMedia, hiddenStandards, institutionalExclusions]);
 
   // Datos filtrados para la vista compacta; no alteran las evidencias de Supabase.
   const filteredIds = new Set(filteredMatrixItems.map((record) => record.id));
@@ -762,7 +768,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   }
 
   function openQuickUploadFor(code: string) {
-    const record = activeRecords.find((row) => row.id === code);
+    const record = browsableRecords.find((row) => row.id === code);
     if (!record || busy) return;
     setStandard(record.standard);
     setQuickMedium(record.id);
@@ -2122,8 +2128,10 @@ setBusy(false);
           standardTitle={selectedStandard.title}
           points={activeReviewPoints}
           savedIds={savedPointReview}
-          onSave={ids=>savePointReview(selectedStandard.id,ids)}
-          onClose={()=>setPointReviewOpen(false)}
+          onSave={ids=>void savePointReview(selectedStandard.id,ids)}
+          onClose={()=>{if(!pointReviewSaving)setPointReviewOpen(false);}}
+          saving={pointReviewSaving}
+          hasLegacy={unsyncedLegacyReview}
         />
       )}
       {bulkTab && (
@@ -2134,6 +2142,9 @@ setBusy(false);
           onHiddenIdsChange={changeHiddenStandards}
           excludedMedia={excludedMedia}
           onExcludedMediaChange={changeExcludedMedia}
+          officialExclusions={institutionalExclusions}
+          onOfficialChanged={changeInstitutionalExclusion}
+          isAdmin={identity.role==='admin'}
           onClose={() => setBulkTab(null)}
           initialTab={bulkTab}
           client={sb}
