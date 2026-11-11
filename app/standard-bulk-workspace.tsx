@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {Fragment,useEffect, useMemo, useRef, useState} from 'react';
 import type {SupabaseClient} from '@supabase/supabase-js';
 import type {Evidence} from '../lib/supabase';
 import {
@@ -381,7 +381,8 @@ export function StandardBulkWorkspace({
                             const official=officialExclusions.find(entry=>entry.point_id===medium.id);
                             const files=docCountByMedium.get(medium.id)||0;
                             return (
-                              <div key={medium.id} className={'bulk-unified-medium-row'+(excluded?' is-excluded':'')}>
+                              <Fragment key={medium.id}>
+                              <div className={'bulk-unified-medium-row'+(excluded?' is-excluded':'')}>
                                 <span className="bulk-medium-code">{medium.id}</span>
                                 <span className="bulk-medium-desc">
                                   <strong>Medio {medium.id}</strong>
@@ -417,7 +418,7 @@ export function StandardBulkWorkspace({
                                   </div>
                                 </div>
                               )}
-                            </div>
+                              </Fragment>
                             );
                           })}
                         </div>
