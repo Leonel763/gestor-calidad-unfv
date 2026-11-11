@@ -71,6 +71,7 @@ export function StandardBulkWorkspace({
   const [layout, setLayout] = useState<ZipLayout>('full');
   const [mediumSearch,setMediumSearch] = useState('');
   const [mediumStandard,setMediumStandard] = useState('todos');
+  const [visibilityFilter,setVisibilityFilter] = useState<'todos'|'ocultos'|'no_aplica'>('todos');
   const [expandedStandards,setExpandedStandards] = useState<number[]>([]);
   const [officialEditing,setOfficialEditing] = useState<string|null>(null);
   const [officialReason,setOfficialReason] = useState('');
@@ -106,14 +107,18 @@ export function StandardBulkWorkspace({
         const media=st.points.flatMap(point=>point.items.map(item=>({
           id:item.id,point:point.id,
         })));
-        const matchingMedia=needle && !matchesStandard
+        const textMedia=needle && !matchesStandard
           ? media.filter(medium=>('medio '+medium.id+' '+medium.id+' '+medium.point)
               .toLocaleLowerCase('es').includes(needle))
           : media;
+        const matchingMedia=textMedia.filter(medium=>visibilityFilter==='todos' ||
+          (visibilityFilter==='ocultos' && (hiddenIds.includes(st.id) || excludedMedia.includes(medium.id))) ||
+          (visibilityFilter==='no_aplica' && officialExclusions.some(row=>row.point_id===medium.id)));
+        const showHiddenStandard=visibilityFilter==='ocultos' && hiddenIds.includes(st.id);
         return {st,matchingMedia,matchesStandard};
       })
-      .filter(group=>group.matchesStandard || group.matchingMedia.length>0);
-  },[standards,mediumSearch,mediumStandard]);
+      .filter(group=>group.matchingMedia.length>0 || (visibilityFilter==='todos' && group.matchesStandard));
+  },[standards,mediumSearch,mediumStandard,visibilityFilter,hiddenIds,excludedMedia,officialExclusions]);
 
   const docCountByMedium = useMemo(()=>{
     const count = new Map<string,number>();
@@ -330,6 +335,18 @@ export function StandardBulkWorkspace({
                 <strong>Estándares y medios de logro</strong>
                 <span>{hiddenIds.length} estándares ocultos para ti · {excludedMedia.length} medios ocultos para ti · {officialExclusions.length} no aplicables</span>
               </div>
+              <div className="ux-bulk-quick-filters" aria-label="Accesos rápidos de organización">
+                <button type="button" className={visibilityFilter==='todos'?'is-active':''}
+                  aria-pressed={visibilityFilter==='todos'} onClick={()=>{setVisibilityFilter('todos');setMediumSearch('');setMediumStandard('todos');}}>Todos</button>
+                <button type="button" className={visibilityFilter==='ocultos'?'is-active':''}
+                  aria-pressed={visibilityFilter==='ocultos'} onClick={()=>{setVisibilityFilter('ocultos');setMediumSearch('');setMediumStandard('todos');}}>
+                  <EyeOff size={15}/> Ver ocultos ({hiddenIds.length} estándares · {excludedMedia.length} medios)
+                </button>
+                <button type="button" className={visibilityFilter==='no_aplica'?'is-active':''}
+                  aria-pressed={visibilityFilter==='no_aplica'} onClick={()=>{setVisibilityFilter('no_aplica');setMediumSearch('');setMediumStandard('todos');}}>
+                  No aplica ({officialExclusions.length})
+                </button>
+              </div>
               <div className="bulk-media-filters">
                 <input value={mediumSearch} onChange={event=>setMediumSearch(event.target.value)}
                   placeholder="Buscar E6, nombre o medio 6.1.1…" aria-label="Buscar estándar o medio de logro"/>
@@ -350,7 +367,7 @@ export function StandardBulkWorkspace({
                   const isHidden=hiddenIds.includes(st.id);
                   const fileCount=docCountByStandard.get(st.id)||0;
                   const excludedCount=st.points.flatMap(pt=>pt.items).filter(item=>officialExclusions.some(row=>row.point_id===item.id)).length;
-                  const expanded=Boolean(mediumSearch.trim()) || expandedStandards.includes(st.id);
+                  const expanded=visibilityFilter!=='todos' || Boolean(mediumSearch.trim()) || expandedStandards.includes(st.id);
                   return (
                     <section className={'bulk-unified-standard'+(isHidden?' is-hidden':'')} key={st.id}>
                       <div className="bulk-unified-standard-row">
@@ -430,7 +447,7 @@ export function StandardBulkWorkspace({
                   <div className="bulk-unified-empty">
                     <SearchCheck size={23}/>
                     <strong>No se encontraron resultados.</strong>
-                    <span>Prueba con otro código de medio o nombre de estándar.</span>
+                    <span>{visibilityFilter==='ocultos'?'No tienes medios ni estándares ocultos con estos filtros.':'Prueba con otro código de medio o nombre de estándar.'}</span>
                   </div>
                 )}
               </div>
