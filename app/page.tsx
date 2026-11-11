@@ -309,9 +309,9 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     setPointReviewSaving(true);
     try{
       if(additions.length){
-        const {error}=await sb.from("medium_reviews").upsert(additions.map(medium_id=>({
+        const {error}=await sb.from("medium_reviews").insert(additions.map(medium_id=>({
           medium_id,standard_id:standardId,reviewer_id:identity.id,reviewer_name:identity.full_name
-        })),{onConflict:"medium_id,reviewer_id"});
+        })));
         if(error)throw error;
       }
       if(removals.length){
