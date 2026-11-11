@@ -214,6 +214,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [trashedDocuments, setTrashedDocuments] = useState<Evidence[]>([]);
   const [showTrash, setShowTrash] = useState(false);
   const [pointReviews, setPointReviews] = useState<Array<{point_id:string;standard_id:number;reviewer_id:string;reviewer_name:string;reviewed_at:string}>>([]);
+  const [mediumReviews, setMediumReviews] = useState<Array<{medium_id:string;standard_id:number;reviewer_id:string;reviewer_name:string;reviewed_at:string}>>([]);
   const [institutionalExclusions, setInstitutionalExclusions] = useState<Array<{point_id:string;reason:string;excluded_by_name:string;excluded_at:string}>>([]);
   const [pointReviewSaving, setPointReviewSaving] = useState(false);
   const [alert, setAlert] = useState<Notice | null>(null);
@@ -291,6 +292,41 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       setReviewedPointsByStandard(allowed);
     } catch { setReviewedPointsByStandard({}); }
   },[reviewedPointsKey]);
+
+  async function saveMediumReview(standardId:number,checkedIds:string[]){
+    if(!sb || !identity.approved || pointReviewSaving) return;
+    const currentStandard=standards.find(st=>st.id===standardId);
+    if(!currentStandard)return;
+    const allowed=new Set(currentStandard.points.flatMap(pt=>pt.items).filter(it=>
+      !excludedMedia.includes(it.id) && !institutionalExclusions.some(row=>row.point_id===it.id)
+    ).map(it=>it.id));
+    const desired=[...new Set(checkedIds.filter(id=>allowed.has(id)))];
+    const existing=mediumReviews.filter(row=>row.standard_id===standardId && row.reviewer_id===identity.id)
+      .map(row=>row.medium_id);
+    // Solo se editan medios visibles: las marcas de los ocultos nunca se eliminan.
+    const additions=desired.filter(id=>!existing.includes(id));
+    const removals=existing.filter(id=>allowed.has(id) && !desired.includes(id));
+    setPointReviewSaving(true);
+    try{
+      if(additions.length){
+        const {error}=await sb.from("medium_reviews").upsert(additions.map(medium_id=>({
+          medium_id,standard_id:standardId,reviewer_id:identity.id,reviewer_name:identity.full_name
+        })),{onConflict:"medium_id,reviewer_id"});
+        if(error)throw error;
+      }
+      if(removals.length){
+        const {error}=await sb.from("medium_reviews").delete().eq("reviewer_id",identity.id)
+          .eq("standard_id",standardId).in("medium_id",removals);
+        if(error)throw error;
+      }
+      await refresh();
+      setPointReviewOpen(false);
+      showAlert("Tus revisiones individuales se guardaron correctamente.","success");
+    }catch(reason){
+      showAlert("No se pudo guardar toda la revisión: "+(reason instanceof Error?reason.message:"error inesperado"));
+      await refresh();
+    }finally{setPointReviewSaving(false);}
+  }
 
   async function savePointReview(standardId:number,checkedIds:string[]){
     if(!sb || !identity.approved || pointReviewSaving) return;
@@ -497,12 +533,13 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
 
   const refresh = async () => {
     if (!sb || !identity.approved) return;
-    const [docsRes, trackingRes, commentRes, reviewsRes, pointReviewsRes, excludedRes, trashRes] = await Promise.all([
+    const [docsRes, trackingRes, commentRes, reviewsRes, pointReviewsRes, mediumReviewsRes, excludedRes, trashRes] = await Promise.all([
       sb.from('evidencias').select('*').order('created_at', { ascending: false }),
       sb.from('seguimiento').select('*'),
       sb.from('document_comments').select('evidence_id,comment_type,status'),
       sb.from('standard_reviews').select('standard_id,status,reviewed_by,reviewer_name,reviewed_at'),
       sb.from('point_reviews').select('point_id,standard_id,reviewer_id,reviewer_name,reviewed_at'),
+      sb.from('medium_reviews').select('medium_id,standard_id,reviewer_id,reviewer_name,reviewed_at'),
       sb.from('media_exclusions').select('point_id,reason,excluded_by_name,excluded_at'),
       sb.from('evidence_trash').select('evidence_id'),
     ]);
@@ -521,6 +558,8 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     else setStandardReviews((reviewsRes.data || []) as StandardReview[]);
     if(pointReviewsRes.error) showAlert('No se pudieron consultar revisiones por punto: '+pointReviewsRes.error.message);
     else setPointReviews(pointReviewsRes.data || []);
+    if(mediumReviewsRes.error) showAlert("No se pudieron consultar las revisiones individuales: "+mediumReviewsRes.error.message);
+    else setMediumReviews(mediumReviewsRes.data || []);
     if(excludedRes.error) showAlert('No se pudieron consultar los medios no aplicables: '+excludedRes.error.message);
     else setInstitutionalExclusions(excludedRes.data || []);
   };
@@ -539,6 +578,7 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'document_comments' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'standard_reviews' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'point_reviews' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'medium_reviews' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'media_exclusions' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'evidence_trash' }, reload)
       .subscribe((status) => {
@@ -623,6 +663,12 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const activeReviewPoints = selectedStandard.points
     .filter(pt => pt.items.some(it => !isExcluded(it.id)))
     .map(pt => ({id:pt.id,criterion:pt.criterion}));
+  const activeReviewMedia=activeReviewPoints.map(pt=>({...pt,media:selectedStandard.points.find(p=>p.id===pt.id)!.items
+    .filter(it=>!isExcluded(it.id)).map(it=>({id:it.id,text:it.text || normalizeType(it.type)}))}));
+  const activeReviewMediaIds=new Set(activeReviewMedia.flatMap(pt=>pt.media.map(m=>m.id)));
+  const savedMediumReview=mediumReviews.filter(row=>row.standard_id===selectedStandard.id && row.reviewer_id===identity.id && activeReviewMediaIds.has(row.medium_id)).map(row=>row.medium_id);
+  const activeReviewMediaCount=activeReviewMediaIds.size;
+  const activeReviewMediaReviewedCount=savedMediumReview.length;
   const activeReviewPointIds=new Set(activeReviewPoints.map(pt=>pt.id));
   const syncedPointReview=pointReviews.filter(row=>row.standard_id===selectedStandard.id && row.reviewer_id===identity.id).map(row=>row.point_id);
   const legacyReview=reviewedPointsByStandard[String(selectedStandard.id)]||[];
@@ -1708,14 +1754,14 @@ setBusy(false);
                       <span className="point-review-entry-icon"><ClipboardList size={19}/></span>
                       <span>
                         <strong>Mi revisión</strong>
-                        <small>{activeReviewedCount} de {activeReviewPoints.length} puntos revisados</small>
+                        <small>{activeReviewMediaReviewedCount} de {activeReviewMediaCount} medios revisados</small>
                       </span>
                     </div>
                     <div className="point-review-entry-actions">
-                      <span className={activeReviewedCount===activeReviewPoints.length && activeReviewPoints.length>0
+                      <span className={activeReviewMediaReviewedCount===activeReviewMediaCount && activeReviewMediaCount>0
                         ? 'point-review-entry-state is-done' : 'point-review-entry-state'}>
-                        {activeReviewPoints.length>0 && activeReviewedCount===activeReviewPoints.length
-                          ? 'Revisado ✓' : activeReviewedCount>0 ? 'En revisión' : 'Sin revisar'}
+                        {activeReviewMediaCount>0 && activeReviewMediaReviewedCount===activeReviewMediaCount
+                          ? 'Revisado ✓' : activeReviewMediaReviewedCount>0 ? 'En revisión' : 'Sin revisar'}
                       </span>
                       <button type="button" onClick={()=>setPointReviewOpen(true)}>
                         <ClipboardList size={16}/> Revisar puntos <ChevronRight size={16}/>
@@ -2219,13 +2265,12 @@ setBusy(false);
         <PointReviewDialog
           standardId={selectedStandard.id}
           standardTitle={selectedStandard.title}
-          points={activeReviewPoints}
-          savedIds={savedPointReview}
-          onSave={ids=>void savePointReview(selectedStandard.id,ids)}
+          points={activeReviewMedia}
+          savedIds={savedMediumReview}
+          onSave={ids=>void saveMediumReview(selectedStandard.id,ids)}
           onClose={()=>{if(!pointReviewSaving)setPointReviewOpen(false);}}
           saving={pointReviewSaving}
-          hasLegacy={unsyncedLegacyReview}
-          teamReviews={pointReviews.filter(row=>row.standard_id===selectedStandard.id)}
+          teamReviews={mediumReviews.filter(row=>row.standard_id===selectedStandard.id)}
           currentUserId={identity.id}
         />
       )}
