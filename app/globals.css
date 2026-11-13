@@ -2441,3 +2441,18 @@
  .point-review-statbar{margin-bottom:8px}
  .point-review-footnote{line-height:1.35;margin-bottom:6px}
 }
+
+
+/* Papelera: administración explícita sin eliminación automática */
+.ux-trash-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:11px 12px;background:#f7faf8;border:1px solid #e0e9e2;border-radius:10px;margin:10px 0}
+.ux-trash-actions span{font-size:12px;color:#667e6d}
+.ux-purge-all,.ux-trash-delete{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:9px 12px;border:1px solid #e9c9c8;border-radius:9px;background:#fff9f8;color:#98403c;font-size:11px;font-weight:750;cursor:pointer}
+.ux-purge-all:hover,.ux-trash-delete:hover{background:#fceceb}
+.ux-purge-all:disabled,.ux-trash-delete:disabled{opacity:.55;cursor:not-allowed}
+.ux-purge-confirm{max-width:min(95vw,510px)}
+.ux-purge-file-name{overflow-wrap:anywhere;padding:9px 11px;background:#f6f8f6;border-radius:7px;font-size:12px}
+.ux-purge-size{font-size:12px;color:#627369}
+.ux-purge-label{display:grid;gap:8px;font-size:12px;color:#425e49;margin:14px 0}
+.ux-purge-label input{width:100%;min-height:43px;border:1px solid #cbdacb;border-radius:9px;padding:10px 12px;font-size:12px}
+.ux-purge-label input:focus-visible,.ux-purge-all:focus-visible,.ux-trash-delete:focus-visible{outline:3px solid #f1b1a7;outline-offset:2px}
+@media(max-width:650px){.ux-trash-actions{align-items:stretch}.ux-purge-all{justify-content:center;width:100%}.safe-trash-row .ux-trash-delete{width:100%;justify-content:center}.ux-purge-confirm{max-width:100%}}
