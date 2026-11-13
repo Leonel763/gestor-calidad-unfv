@@ -62,9 +62,9 @@ export async function POST(request:Request){
     const {data:stillTrashed,error:checkError}=await sb.from('evidence_trash')
       .select('evidence_id').eq('evidence_id',id).maybeSingle();
     if(checkError||!stillTrashed){failed.push({id,reason:'El documento ya no está disponible en la papelera.'});continue;}
-    const {error:storageError}=await sb.storage.from('evidencias').remove([doc.file_path]);
-    if(storageError){
-      failed.push({id,reason:'No se pudo borrar el archivo físico: '+storageError.message});
+    const {data:storageResult,error:storageError}=await sb.storage.from('evidencias').remove([doc.file_path]);
+    if(storageError || !storageResult?.length){
+      failed.push({id,reason:'No se confirmó la eliminación física: '+(storageError?.message||'Sin confirmación del almacenamiento.')});
       continue;
     }
     const {data:deleted,error:dbError}=await sb.from('evidencias')
