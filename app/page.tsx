@@ -213,6 +213,10 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [documents, setDocuments] = useState<Evidence[]>([]);
   const [trashedDocuments, setTrashedDocuments] = useState<Evidence[]>([]);
   const [showTrash, setShowTrash] = useState(false);
+  const [purgeTarget,setPurgeTarget] = useState<Evidence[]|null>(null);
+  const [purgeConfirmation,setPurgeConfirmation] = useState('');
+  const [purgeBusy,setPurgeBusy] = useState(false);
+  const trashSize=trashedDocuments.reduce((sum,doc)=>sum+(doc.size_bytes||0),0);
   const [pointReviews, setPointReviews] = useState<Array<{point_id:string;standard_id:number;reviewer_id:string;reviewer_name:string;reviewed_at:string}>>([]);
   const [mediumReviews, setMediumReviews] = useState<Array<{medium_id:string;standard_id:number;reviewer_id:string;reviewer_name:string;reviewed_at:string}>>([]);
   const [institutionalExclusions, setInstitutionalExclusions] = useState<Array<{point_id:string;reason:string;excluded_by_name:string;excluded_at:string}>>([]);
@@ -1089,6 +1093,32 @@ setBusy(false);
       showAlert(action==='trash'?'Documento enviado a la papelera. Puedes recuperarlo.':'Documento restaurado.','success');
     }catch(reason){showAlert(reason instanceof Error?reason.message:'Error al actualizar la papelera.');}
     finally{setDeleting(false);}
+  }
+
+  async function permanentlyDeleteTrashed(){
+    if(!sb || !purgeTarget?.length || purgeBusy || purgeConfirmation!=='ELIMINAR DEFINITIVAMENTE')return;
+    setPurgeBusy(true);
+    dismissAlert();
+    try{
+      const {data:{session}}=await sb.auth.getSession();
+      if(!session?.access_token)throw new Error('Tu sesión expiró. Ingresa nuevamente.');
+      const response=await fetch('/api/documents/purge',{
+        method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},
+        body:JSON.stringify({ids:purgeTarget.map(doc=>doc.id),confirmation:purgeConfirmation})
+      });
+      const result=await response.json();
+      if(!response.ok && response.status!==207)throw new Error(result.error||'No fue posible eliminar los documentos.');
+      await refresh();
+      const success=Array.isArray(result.deletedIds)?result.deletedIds.length:0;
+      const errors=Array.isArray(result.failed)?result.failed:[];
+      if(errors.length){
+        showAlert(`${success} archivo(s) eliminados definitivamente. ${errors.length} no pudieron eliminarse: ${errors[0]?.reason||'Revisa la papelera.'}`);
+      }else{
+        showAlert(`${success} archivo(s) eliminados definitivamente de Supabase.`,'success');
+      }
+      setPurgeTarget(null);setPurgeConfirmation('');
+    }catch(err){showAlert(err instanceof Error?err.message:'Error al vaciar la papelera.');}
+    finally{setPurgeBusy(false);}
   }
 
   async function deleteDocument() {
@@ -2145,9 +2175,15 @@ setBusy(false);
                 <div className="list-panel padded">
                   <div className="section-inline">
                     <h2>Papelera de documentos</h2>
-                    <span className="soft-count">{trashedDocuments.length} archivos recuperables</span>
+                    <span className="soft-count">{trashedDocuments.length} archivos · {formatBytes(trashSize)} ocupados</span>
                   </div>
-                  <p className="safe-trash-description">Los documentos originales siguen guardados en Supabase. Solo el autor o un administrador puede restaurarlos.</p>
+                  <p className="safe-trash-description">Los archivos de la papelera permanecen almacenados en Supabase hasta que un administrador los elimine definitivamente. La eliminación automática a los 30 días todavía está desactivada.</p>
+                  {identity.role==='admin' && trashedDocuments.length>0 && <div className="ux-trash-actions">
+                    <span>El borrado definitivo no se puede deshacer.</span>
+                    <button type="button" className="ux-purge-all" disabled={purgeBusy || deleting} onClick={()=>{setPurgeTarget(trashedDocuments.slice(0,50));setPurgeConfirmation('');}}>
+                      <Trash2 size={15}/> {trashedDocuments.length>50?'Eliminar primeros 50 archivos':'Vaciar papelera'}
+                    </button>
+                  </div>}
                   {trashedDocuments.map(doc=>(
                     <div className="safe-trash-row" key={doc.id}>
                       <FileText size={20}/>
@@ -2158,6 +2194,8 @@ setBusy(false);
                         <button type="button" className="tiny-button" disabled={deleting}
                           onClick={()=>void changeDocumentTrash(doc,'restore')}><RotateCcw size={15}/> Restaurar</button>
                       )}
+                      {identity.role==='admin' && <button type="button" className="ux-trash-delete" disabled={deleting || purgeBusy}
+                        onClick={()=>{setPurgeTarget([doc]);setPurgeConfirmation('');}}><Trash2 size={15}/> Eliminar definitivamente</button>}
                     </div>
                   ))}
                   {!trashedDocuments.length && <div className="empty"><Trash2 size={25}/><strong>La papelera está vacía</strong><span>No se ha ocultado ningún documento.</span></div>}
@@ -2334,6 +2372,24 @@ setBusy(false);
           </section>
         </div>
       )}
+      {purgeTarget && <div className="modal-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!purgeBusy){setPurgeTarget(null);setPurgeConfirmation('');}}}>
+        <section className="delete-dialog ux-purge-confirm" role="dialog" aria-modal="true" aria-labelledby="purge-dialog-title">
+          <div className="delete-dialog-icon"><Trash2 size={21}/></div>
+          <h2 id="purge-dialog-title">Eliminar definitivamente {purgeTarget.length===1?'este documento':purgeTarget.length+' documentos'}?</h2>
+          <p>Esta acción eliminará los archivos físicos de Supabase y sus registros. <strong>No se podrán recuperar.</strong> No afecta los demás documentos.</p>
+          {purgeTarget.length===1 && <p className="ux-purge-file-name">{purgeTarget[0].file_name}</p>}
+          <p className="ux-purge-size">Espacio estimado por liberar: <strong>{formatBytes(purgeTarget.reduce((sum,d)=>sum+(d.size_bytes||0),0))}</strong></p>
+          <label className="ux-purge-label">Para confirmar, escribe <strong>ELIMINAR DEFINITIVAMENTE</strong>
+            <input type="text" autoComplete="off" value={purgeConfirmation} disabled={purgeBusy}
+              onChange={e=>setPurgeConfirmation(e.target.value)} placeholder="ELIMINAR DEFINITIVAMENTE"/>
+          </label>
+          <div className="modal-actions">
+            <button type="button" className="cancel-delete" disabled={purgeBusy} onClick={()=>{setPurgeTarget(null);setPurgeConfirmation('');}}>Cancelar</button>
+            <button type="button" className="confirm-delete" disabled={purgeBusy || purgeConfirmation!=='ELIMINAR DEFINITIVAMENTE'}
+              onClick={()=>void permanentlyDeleteTrashed()}>{purgeBusy?'Eliminando…':'Eliminar para siempre'}</button>
+          </div>
+        </section>
+      </div>}
       {deleteTarget && (
         <div className="modal-overlay" onMouseDown={(e) => { if (e.currentTarget === e.target && !deleting) setDeleteTarget(null); }} role="presentation">
           <section role="dialog" aria-modal="true" aria-labelledby="delete-title" className="delete-dialog">
