@@ -235,7 +235,6 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
   const [bulkTrashTarget, setBulkTrashTarget] = useState<Evidence[] | null>(null);
   const [bulkTrashBusy, setBulkTrashBusy] = useState(false);
-  const [bulkTrashConfirmation, setBulkTrashConfirmation] = useState('');
 
   const [previewDoc, setPreviewDoc] = useState<Evidence | null>(null);
   const [feedbackDoc,setFeedbackDoc] = useState<Evidence|null>(null);
@@ -1108,7 +1107,7 @@ setBusy(false);
   }
 
   async function bulkMoveToTrash(){
-    if (!sb || !bulkTrashTarget?.length || bulkTrashBusy || bulkTrashConfirmation !== 'MOVER A PAPELERA') return;
+    if (!sb || !bulkTrashTarget?.length || bulkTrashBusy) return;
     setBulkTrashBusy(true);
     dismissAlert();
     let completed = 0;
@@ -1132,7 +1131,7 @@ setBusy(false);
       }
       setBulkSelectedIds(ids => ids.filter(id => !bulkTrashTarget.some(doc => doc.id === id)));
       setBulkTrashTarget(null);
-      setBulkTrashConfirmation('');
+      
       await refresh();
       showAlert(failed.length ? `${completed} archivo(s) enviados a la papelera; ${failed.length} fallaron. ${failed[0]}` :
         `${completed} archivo(s) enviados a la papelera. Puedes restaurarlos desde Biblioteca → Papelera.`, failed.length ? 'error' : 'success');
@@ -2266,12 +2265,12 @@ setBusy(false);
                 <div className="bulk-library-controls" aria-label="Eliminación múltiple de documentos">
                   <span>{selectedLibraryDocuments.length} archivos seleccionados</span>
                   <button type="button" className="tiny-button" disabled={!selectedLibraryDocuments.length || bulkTrashBusy}
-                    onClick={() => {setBulkTrashTarget(selectedLibraryDocuments);setBulkTrashConfirmation('');}}>
+                    onClick={() => {setBulkTrashTarget(selectedLibraryDocuments);}}>
                     <Trash2 size={15}/> Mover seleccionados a papelera
                   </button>
                   {libraryStandardFilter !== 'todos' && (
                     <button type="button" className="tiny-button" disabled={!selectedStandardDocuments.length || bulkTrashBusy}
-                      onClick={() => {setBulkTrashTarget(selectedStandardDocuments);setBulkTrashConfirmation('');}}>
+                      onClick={() => {setBulkTrashTarget(selectedStandardDocuments);}}>
                       <Trash2 size={15}/> Mover todos los archivos del estándar {libraryStandardFilter} ({selectedStandardDocuments.length})
                     </button>
                   )}
@@ -2472,20 +2471,16 @@ setBusy(false);
         </section>
       </div>}
       {bulkTrashTarget && (
-        <div className="modal-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!bulkTrashBusy){setBulkTrashTarget(null);setBulkTrashConfirmation('');}}}>
+        <div className="modal-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!bulkTrashBusy){setBulkTrashTarget(null);}}}>
           <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="bulk-trash-title">
             <div className="delete-dialog-icon"><Trash2 size={21}/></div>
             <h2 id="bulk-trash-title">¿Mover {bulkTrashTarget.length} archivo(s) a la papelera?</h2>
             <p>Los documentos dejarán de mostrarse como evidencias activas, pero podrán restaurarse. No se eliminarán los estándares, los medios de logro ni sus datos.</p>
             <p><strong>Espacio de los archivos:</strong> {formatBytes(bulkTrashTarget.reduce((total, doc)=>total+(doc.size_bytes||0),0))}</p>
-            <label>Escribe <strong>MOVER A PAPELERA</strong> para confirmar:
-              <input type="text" autoComplete="off" value={bulkTrashConfirmation} disabled={bulkTrashBusy}
-                onChange={event=>setBulkTrashConfirmation(event.target.value)} placeholder="MOVER A PAPELERA"/>
-            </label>
             <div className="modal-actions">
-              <button type="button" className="cancel-delete" disabled={bulkTrashBusy} onClick={()=>{setBulkTrashTarget(null);setBulkTrashConfirmation('');}}>Cancelar</button>
-              <button type="button" className="confirm-delete" disabled={bulkTrashBusy || bulkTrashConfirmation !== 'MOVER A PAPELERA'}
-                onClick={()=>void bulkMoveToTrash()}>{bulkTrashBusy?'Moviendo documentos…':'Mover a papelera'}</button>
+              <button type="button" className="cancel-delete" disabled={bulkTrashBusy} onClick={()=>{setBulkTrashTarget(null);}}>Cancelar</button>
+              <button type="button" className="confirm-delete" disabled={bulkTrashBusy}
+                onClick={()=>void bulkMoveToTrash()}>{bulkTrashBusy?'Moviendo documentos…':'Aceptar, mover a la papelera'}</button>
             </div>
           </section>
         </div>
