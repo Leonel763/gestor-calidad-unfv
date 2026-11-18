@@ -730,6 +730,11 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   }, [documents, tracking, query, libraryStandardFilter, typeFilter, statusFilter]);
 
   const selectableLibraryRows = libraryRows.filter(({doc}) => identity.role === 'admin' || doc.uploaded_by === identity.id);
+  // La selección general incluye TODOS los archivos activos autorizados,
+  // aunque no estén en la página actual o no coincidan con los filtros.
+  const allSelectableDocuments = documents.filter(doc => identity.role === 'admin' || doc.uploaded_by === identity.id);
+  const allSelectableIds = new Set(allSelectableDocuments.map(doc => doc.id));
+  const allDocumentsSelected = allSelectableDocuments.length > 0 && allSelectableDocuments.every(doc => bulkSelectedIds.includes(doc.id));
   const selectableLibraryIds = new Set(selectableLibraryRows.map(({doc}) => doc.id));
   const selectedLibraryDocuments = documents.filter(doc => bulkSelectedIds.includes(doc.id) && (identity.role === 'admin' || doc.uploaded_by === identity.id));
   const selectedStandardDocuments = libraryStandardFilter === 'todos' ? [] : documents.filter(doc =>
@@ -2216,13 +2221,22 @@ setBusy(false);
                   {showTrash ? 'Ver biblioteca' : 'Papelera ('+trashedDocuments.length+')'}
                 </button>
                 <button className="tiny-button" onClick={resetFilters}>Limpiar filtros</button>
-                {!showTrash && selectableLibraryRows.length > 0 && (
+                {!showTrash && selectableLibraryRows.length > 0 && libraryRows.length !== documents.length && (
                   <button type="button" className="tiny-button" onClick={() => setBulkSelectedIds(ids =>
                     selectableLibraryRows.every(({doc}) => ids.includes(doc.id))
                       ? ids.filter(id => !selectableLibraryIds.has(id))
                       : Array.from(new Set([...ids, ...selectableLibraryRows.map(({doc}) => doc.id)]))
                   )}>
-                    {selectableLibraryRows.every(({doc}) => bulkSelectedIds.includes(doc.id)) ? 'Deseleccionar filtrados' : 'Seleccionar filtrados'}
+                    {selectableLibraryRows.every(({doc}) => bulkSelectedIds.includes(doc.id)) ? 'Deseleccionar filtrados' : `Seleccionar filtrados (${selectableLibraryRows.length})`}
+                  </button>
+                )}
+                {!showTrash && allSelectableDocuments.length > 0 && (
+                  <button type="button" className="tiny-button" onClick={() => setBulkSelectedIds(ids =>
+                    allDocumentsSelected
+                      ? ids.filter(id => !allSelectableIds.has(id))
+                      : Array.from(new Set([...ids, ...allSelectableDocuments.map(doc => doc.id)]))
+                  )}>
+                    {allDocumentsSelected ? 'Deseleccionar todos' : `Seleccionar todos los archivos (${allSelectableDocuments.length})`}
                   </button>
                 )}
               </div>
@@ -2268,14 +2282,19 @@ setBusy(false);
                     onClick={() => {setBulkTrashTarget(selectedLibraryDocuments);}}>
                     <Trash2 size={15}/> Mover seleccionados a papelera
                   </button>
-                  {libraryStandardFilter !== 'todos' && (
+                  {libraryStandardFilter === 'todos' ? (
+                    <button type="button" className="tiny-button" disabled={!allSelectableDocuments.length || bulkTrashBusy}
+                      onClick={() => setBulkTrashTarget(allSelectableDocuments)}>
+                      <Trash2 size={15}/> Mover todos los archivos a papelera ({allSelectableDocuments.length})
+                    </button>
+                  ) : (
                     <button type="button" className="tiny-button" disabled={!selectedStandardDocuments.length || bulkTrashBusy}
-                      onClick={() => {setBulkTrashTarget(selectedStandardDocuments);}}>
+                      onClick={() => setBulkTrashTarget(selectedStandardDocuments)}>
                       <Trash2 size={15}/> Mover todos los archivos del estándar {libraryStandardFilter} ({selectedStandardDocuments.length})
                     </button>
                   )}
                   {bulkSelectedIds.length > 0 && <button type="button" className="tiny-button" onClick={()=>setBulkSelectedIds([])}>Limpiar selección</button>}
-                  <small>Los archivos pasan a la papelera y se pueden restaurar. El estándar y sus medios permanecen intactos.</small>
+                  <small>«Todos los archivos» incluye documentos de todas las páginas y no depende de los filtros. Los archivos se pueden restaurar desde la papelera; los estándares permanecen intactos.</small>
                 </div>
                 <div className="library-table-head" aria-hidden="true">
                   <span>Estándar / medio</span><span>Documento</span><span>Tipo</span><span>Estado</span><span>Acciones</span>
