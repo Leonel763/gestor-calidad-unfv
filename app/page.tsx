@@ -232,6 +232,11 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
   const [notes, setNotes] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Evidence | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
+  const [bulkTrashTarget, setBulkTrashTarget] = useState<Evidence[] | null>(null);
+  const [bulkTrashBusy, setBulkTrashBusy] = useState(false);
+  const [bulkTrashConfirmation, setBulkTrashConfirmation] = useState('');
+
   const [previewDoc, setPreviewDoc] = useState<Evidence | null>(null);
   const [feedbackDoc,setFeedbackDoc] = useState<Evidence|null>(null);
   const [commentBriefs,setCommentBriefs] = useState<DocumentCommentBrief[]>([]);
@@ -725,6 +730,13 @@ function ProtectedHome({identity}:{identity:ApprovedIdentity}) {
     });
   }, [documents, tracking, query, libraryStandardFilter, typeFilter, statusFilter]);
 
+  const selectableLibraryRows = libraryRows.filter(({doc}) => identity.role === 'admin' || doc.uploaded_by === identity.id);
+  const selectableLibraryIds = new Set(selectableLibraryRows.map(({doc}) => doc.id));
+  const selectedLibraryDocuments = documents.filter(doc => bulkSelectedIds.includes(doc.id) && (identity.role === 'admin' || doc.uploaded_by === identity.id));
+  const selectedStandardDocuments = libraryStandardFilter === 'todos' ? [] : documents.filter(doc =>
+    all.some(record => record.id === doc.point_id && record.standard === Number(libraryStandardFilter)) &&
+    (identity.role === 'admin' || doc.uploaded_by === identity.id)
+  );
   const libraryPageCount = Math.max(1, Math.ceil(libraryRows.length / LIBRARY_PAGE_SIZE));
   const visibleLibraryRows = libraryRows.slice(
     (Math.min(libraryPage, libraryPageCount) - 1) * LIBRARY_PAGE_SIZE,
@@ -1093,6 +1105,42 @@ setBusy(false);
       showAlert(action==='trash'?'Documento enviado a la papelera. Puedes recuperarlo.':'Documento restaurado.','success');
     }catch(reason){showAlert(reason instanceof Error?reason.message:'Error al actualizar la papelera.');}
     finally{setDeleting(false);}
+  }
+
+  async function bulkMoveToTrash(){
+    if (!sb || !bulkTrashTarget?.length || bulkTrashBusy || bulkTrashConfirmation !== 'MOVER A PAPELERA') return;
+    setBulkTrashBusy(true);
+    dismissAlert();
+    let completed = 0;
+    const failed: string[] = [];
+    try {
+      const {data:{session}} = await sb.auth.getSession();
+      if (!session?.access_token) throw new Error('Tu sesión expiró. Ingresa nuevamente.');
+      for (const doc of bulkTrashTarget) {
+        try {
+          const response = await fetch('/api/documents/delete',{
+            method:'POST',
+            headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},
+            body:JSON.stringify({id:doc.id,action:'trash'})
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'No se pudo mover el archivo.');
+          completed += 1;
+        } catch (error) {
+          failed.push(doc.file_name + ': ' + (error instanceof Error ? error.message : 'Error desconocido'));
+        }
+      }
+      setBulkSelectedIds(ids => ids.filter(id => !bulkTrashTarget.some(doc => doc.id === id)));
+      setBulkTrashTarget(null);
+      setBulkTrashConfirmation('');
+      await refresh();
+      showAlert(failed.length ? `${completed} archivo(s) enviados a la papelera; ${failed.length} fallaron. ${failed[0]}` :
+        `${completed} archivo(s) enviados a la papelera. Puedes restaurarlos desde Biblioteca → Papelera.`, failed.length ? 'error' : 'success');
+    } catch(error) {
+      showAlert(error instanceof Error ? error.message : 'No se pudo iniciar el traslado.');
+    } finally {
+      setBulkTrashBusy(false);
+    }
   }
 
   async function permanentlyDeleteTrashed(){
@@ -2169,6 +2217,15 @@ setBusy(false);
                   {showTrash ? 'Ver biblioteca' : 'Papelera ('+trashedDocuments.length+')'}
                 </button>
                 <button className="tiny-button" onClick={resetFilters}>Limpiar filtros</button>
+                {!showTrash && selectableLibraryRows.length > 0 && (
+                  <button type="button" className="tiny-button" onClick={() => setBulkSelectedIds(ids =>
+                    selectableLibraryRows.every(({doc}) => ids.includes(doc.id))
+                      ? ids.filter(id => !selectableLibraryIds.has(id))
+                      : Array.from(new Set([...ids, ...selectableLibraryRows.map(({doc}) => doc.id)]))
+                  )}>
+                    {selectableLibraryRows.every(({doc}) => bulkSelectedIds.includes(doc.id)) ? 'Deseleccionar filtrados' : 'Seleccionar filtrados'}
+                  </button>
+                )}
               </div>
 
               {showTrash ? (
@@ -2206,12 +2263,36 @@ setBusy(false);
                   <h2>Documentos cargados</h2>
                   <span className="soft-count">{documents.length} archivos en total</span>
                 </div>
+                <div className="bulk-library-controls" aria-label="Eliminación múltiple de documentos">
+                  <span>{selectedLibraryDocuments.length} archivos seleccionados</span>
+                  <button type="button" className="tiny-button" disabled={!selectedLibraryDocuments.length || bulkTrashBusy}
+                    onClick={() => {setBulkTrashTarget(selectedLibraryDocuments);setBulkTrashConfirmation('');}}>
+                    <Trash2 size={15}/> Mover seleccionados a papelera
+                  </button>
+                  {libraryStandardFilter !== 'todos' && (
+                    <button type="button" className="tiny-button" disabled={!selectedStandardDocuments.length || bulkTrashBusy}
+                      onClick={() => {setBulkTrashTarget(selectedStandardDocuments);setBulkTrashConfirmation('');}}>
+                      <Trash2 size={15}/> Mover todos los archivos del estándar {libraryStandardFilter} ({selectedStandardDocuments.length})
+                    </button>
+                  )}
+                  {bulkSelectedIds.length > 0 && <button type="button" className="tiny-button" onClick={()=>setBulkSelectedIds([])}>Limpiar selección</button>}
+                  <small>Los archivos pasan a la papelera y se pueden restaurar. El estándar y sus medios permanecen intactos.</small>
+                </div>
                 <div className="library-table-head" aria-hidden="true">
                   <span>Estándar / medio</span><span>Documento</span><span>Tipo</span><span>Estado</span><span>Acciones</span>
                 </div>
                 {visibleLibraryRows.map(({ doc, record, status }) => (
                   <div className="library-document-row" key={doc.id}>
-                    <div className="library-standard-code"><strong>Estándar {record.standard}</strong><small>{record.id}</small></div>
+                    <div className="library-standard-code">
+                      {(identity.role === 'admin' || doc.uploaded_by === identity.id) && (
+                        <label className="bulk-library-check">
+                          <input type="checkbox" checked={bulkSelectedIds.includes(doc.id)}
+                            onChange={event => setBulkSelectedIds(ids => event.target.checked
+                              ? Array.from(new Set([...ids, doc.id])) : ids.filter(id => id !== doc.id))}
+                            aria-label={`Seleccionar ${doc.file_name} para mover a papelera`}/>
+                          <span>Seleccionar</span>
+                        </label>
+                      )}<strong>Estándar {record.standard}</strong><small>{record.id}</small></div>
                     <button className="library-file-name" onClick={() => void openPreview(doc)} title="Abrir vista previa">
                       <span className="doc-icon"><FileText size={19} /></span>
                       <span><strong>{doc.file_name}</strong><small>{doc.uploader} · {new Date(doc.created_at).toLocaleDateString('es-PE')}</small></span>
@@ -2390,6 +2471,25 @@ setBusy(false);
           </div>
         </section>
       </div>}
+      {bulkTrashTarget && (
+        <div className="modal-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!bulkTrashBusy){setBulkTrashTarget(null);setBulkTrashConfirmation('');}}}>
+          <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="bulk-trash-title">
+            <div className="delete-dialog-icon"><Trash2 size={21}/></div>
+            <h2 id="bulk-trash-title">¿Mover {bulkTrashTarget.length} archivo(s) a la papelera?</h2>
+            <p>Los documentos dejarán de mostrarse como evidencias activas, pero podrán restaurarse. No se eliminarán los estándares, los medios de logro ni sus datos.</p>
+            <p><strong>Espacio de los archivos:</strong> {formatBytes(bulkTrashTarget.reduce((total, doc)=>total+(doc.size_bytes||0),0))}</p>
+            <label>Escribe <strong>MOVER A PAPELERA</strong> para confirmar:
+              <input type="text" autoComplete="off" value={bulkTrashConfirmation} disabled={bulkTrashBusy}
+                onChange={event=>setBulkTrashConfirmation(event.target.value)} placeholder="MOVER A PAPELERA"/>
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="cancel-delete" disabled={bulkTrashBusy} onClick={()=>{setBulkTrashTarget(null);setBulkTrashConfirmation('');}}>Cancelar</button>
+              <button type="button" className="confirm-delete" disabled={bulkTrashBusy || bulkTrashConfirmation !== 'MOVER A PAPELERA'}
+                onClick={()=>void bulkMoveToTrash()}>{bulkTrashBusy?'Moviendo documentos…':'Mover a papelera'}</button>
+            </div>
+          </section>
+        </div>
+      )}
       {deleteTarget && (
         <div className="modal-overlay" onMouseDown={(e) => { if (e.currentTarget === e.target && !deleting) setDeleteTarget(null); }} role="presentation">
           <section role="dialog" aria-modal="true" aria-labelledby="delete-title" className="delete-dialog">
